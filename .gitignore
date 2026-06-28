@@ -1,0 +1,40 @@
+# .claude/ — AI 메타데이터 (전체 제외, docs/ 문서 추적)
+.claude/*
+!.claude/docs/
+!.claude/docs/*.md
+
+# AI workspace (pipeline 실행 로그·기록 — SPEC_ROOT 하위)
+_ai-workspace/
+
+# OS / Tool crash dumps
+*.stackdump
+core.*
+
+# Node.js
+node_modules/
+dist/
+build/
+.next/
+.turbo/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+logs/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Flutter
+mobile/customer-app/.dart_tool/
+mobile/customer-app/build/
+mobile/customer-app/.flutter-plugins
+mobile/customer-app/.flutter-plugins-dependencies
+
+# Prisma
+apps/backend/prisma/generated/

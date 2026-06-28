@@ -1,0 +1,6 @@
+{
+  "name": "worker",
+  "version": "0.0.1",
+  "private": true,
+  "description": "DOA Market background worker (pg-boss — Stage 2+)"
+}

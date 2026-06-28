@@ -1,0 +1,39 @@
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# AI workspace
+.claude/*
+!.claude/docs/
+!.claude/docs/*.md
+_ai-workspace/
+docs/specs/
+
+# IDE
+.idea/
+.vscode/
+.history/
+
+# Node
+**/node_modules/
+**/dist/
+**/build/
+**/.turbo/
+**/coverage/
+
+# Environment
+**/.env
+**/.env.local
+**/.env.*.local
+
+# Logs
+**/*.log
+**/logs/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Prisma generated
+**/prisma/generated/

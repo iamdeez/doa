@@ -1,0 +1,42 @@
+// Prisma multiSchema — GA in Prisma 6.7+. No previewFeatures flag needed.
+// research.md 핀 버전 ^6.19.0 확정: previewFeatures = ["multiSchema"] 생략.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  schemas  = ["users", "products", "commerce", "orders", "payments", "settlements", "admin", "files"]
+}
+
+// ============================================================
+// users 스키마 — Stage 1 실체화 테이블
+// ============================================================
+
+/// 사용자 기본 정보. password 는 bcrypt 해시값만 저장 (NFR-005).
+model User {
+  id           String         @id @default(cuid())
+  email        String         @unique
+  password     String
+  createdAt    DateTime       @default(now())
+  refreshTokens RefreshToken[]
+
+  @@map("users")
+  @@schema("users")
+}
+
+/// JWT Refresh Token. 원문 JWT 는 클라이언트에만 발급, DB 에는 SHA-256 해시만 저장 (ADR-003).
+model RefreshToken {
+  id        String   @id @default(cuid())
+  userId    String
+  tokenHash String   @unique
+  expiresAt DateTime
+  revoked   Boolean  @default(false)
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("refresh_tokens")
+  @@schema("users")
+}
