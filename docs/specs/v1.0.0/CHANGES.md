@@ -1,3 +1,86 @@
+## [002-catalog] 구현 완료
+
+**변경 파일**:
+
+### Prisma 스키마 및 마이그레이션
+
+- `apps/backend/prisma/schema.prisma`: users 스키마에 User(name·phone 필드 추가)·Seller·Address·Wishlist·ProductView 모델 추가. products 스키마에 Category·Product·ProductImage·ProductVariant·Inventory·InventoryLog 모델 및 SellerStatus·ProductStatus enum 추가. 총 10개 테이블 신규 정의.
+- `apps/backend/prisma/migrations/20260628092954_catalog/migration.sql`: users 스키마 신규 4테이블(sellers·addresses·wishlists·product_views) + products 스키마 8개(categories·products·product_images·options·variants·inventory·inventory_logs·SellerStatus enum) DDL. 카테고리 seed 8개 포함(INSERT … ON CONFLICT DO NOTHING).
+- `apps/backend/prisma/migrations/migration_lock.toml`: migration lock 코멘트 문구 수정(i.e.→e.g.)
+
+### user 모듈
+
+- `apps/backend/src/modules/user/user.service.ts`: 프로필 조회·수정, 배송지 CRUD·기본지정, 찜(wishlist) 추가·제거·조회, 최근 본 상품 조회(50개 상한) 구현. `UserEvents.PRODUCT_VIEWED` 이벤트 발행.
+- `apps/backend/src/modules/user/user.repository.ts`: users 스키마 전용 Prisma CRUD — User·Address·Wishlist·ProductView 테이블 접근 메서드 구현.
+- `apps/backend/src/modules/user/user.controller.ts`: GET /users/me, PATCH /users/me, POST/PATCH/DELETE /users/me/addresses, PATCH /users/me/addresses/:id/default, GET/POST/DELETE /users/me/wishlist/:productId, GET /users/me/product-views 엔드포인트 구현.
+- `apps/backend/src/modules/user/user.events.ts`: `UserEventsHandler` — `product.viewed` 이벤트 구독, `recordProductView` 호출로 product_views upsert.
+- `apps/backend/src/modules/user/user.module.ts`: UserService·UserRepository·UserEventsHandler 등록 및 InventoryService·SellerService export.
+- `apps/backend/src/modules/user/user.constants.ts`: `MAX_PRODUCT_VIEWS = 50` 상수 정의.
+- `apps/backend/src/modules/user/dto/`: create-address.dto.ts, update-address.dto.ts, update-profile.dto.ts, add-wishlist.dto.ts
+- `apps/backend/src/modules/user/user.service.spec.ts`: UserService unit 테스트 (SC-001~010, SC-012)
+- `apps/backend/src/modules/user/user.events.spec.ts`: UserEventsHandler unit 테스트 (SC-011)
+- `apps/backend/src/modules/user/user.controller.spec.ts`: UserController guard 테스트 (SC-002)
+
+### seller 모듈
+
+- `apps/backend/src/modules/seller/seller.service.ts`: 판매자 등록(PENDING), 프로필 조회·수정, 심사 상태 조회, 판매자 승인·거부 구현.
+- `apps/backend/src/modules/seller/seller.repository.ts`: users.sellers 테이블 접근 메서드 구현.
+- `apps/backend/src/modules/seller/seller.controller.ts`: POST /sellers/register, GET /sellers/me, PATCH /sellers/me, GET /sellers/me/status, PATCH /sellers/:id/approve·reject 엔드포인트 구현. **approve·reject 에 AdminGuard 적용(SEC-001 수정)** — ADMIN_USER_IDS 미포함 사용자 403 반환.
+- `apps/backend/src/modules/seller/seller.module.ts`: SellerService·SellerRepository 등록 및 export.
+- `apps/backend/src/modules/seller/dto/`: register-seller.dto.ts, update-seller.dto.ts, reject-seller.dto.ts
+- `apps/backend/src/modules/seller/seller.service.spec.ts`: SellerService unit 테스트 (SC-013~018)
+- `apps/backend/.env.example`: ADMIN_USER_IDS 환경변수 추가 (SEC-001 AdminGuard 설정용. 콤마구분 user id 목록. 미설정 시 전원 거부).
+
+### product 모듈
+
+- `apps/backend/src/modules/product/product.service.ts`: 카테고리 목록 조회, 상품 등록(DRAFT)·수정·상태전환(publish/deactivate), variant CRUD, 이미지(최대 10개) 추가·삭제, 상품 목록(cursor 페이지네이션·ACTIVE+OOS 필터), 상품 상세, 판매자 전체 상태 목록 구현. InventoryService·EventEmitter2 의존.
+- `apps/backend/src/modules/product/product.repository.ts`: products 스키마 전용 Prisma CRUD — Category·Product·ProductVariant·ProductImage 테이블 접근 메서드 구현.
+- `apps/backend/src/modules/product/product.controller.ts`: GET /categories, POST/PATCH /products, PATCH /products/:id/publish·deactivate, POST/PATCH/DELETE /products/:id/variants, POST/DELETE /products/:id/images, GET /products, GET /products/:id, GET /sellers/me/products 엔드포인트 구현.
+- `apps/backend/src/modules/product/product.events.ts`: `ProductEventsHandler` — `stock.changed` 이벤트 구독, 전체 variant 재고 합계 기반 자동 OUT_OF_STOCK/ACTIVE 전환 처리.
+- `apps/backend/src/modules/product/product.module.ts`: ProductService·ProductRepository·ProductEventsHandler·InventoryModule·SellerModule 등록.
+- `apps/backend/src/modules/product/product.constants.ts`: `MAX_PRODUCT_IMAGES = 10` 상수 정의.
+- `apps/backend/src/modules/product/dto/`: create-product.dto.ts, update-product.dto.ts, create-variant.dto.ts, update-variant.dto.ts, add-image.dto.ts, list-products.dto.ts
+- `apps/backend/src/modules/product/product.service.spec.ts`: ProductService unit 테스트 (SC-019~029, SC-032~040)
+- `apps/backend/src/modules/product/product.events.spec.ts`: ProductEventsHandler unit 테스트 (SC-030~031)
+
+### inventory 모듈
+
+- `apps/backend/src/modules/inventory/inventory.service.ts`: 재고 초기화(initStock), 입고(stockIn·stock 증가+inventory_logs append), 재고 조회(getStock), checkAvailability(boolean), decreaseStock(CAS 원자적 차감+log append) 구현. stock.changed 이벤트 발행.
+- `apps/backend/src/modules/inventory/inventory.repository.ts`: products.inventory·inventory_logs 테이블 접근. appendLog(delta 필드) append-only. update/delete 메서드 없음(SC-043).
+- `apps/backend/src/modules/inventory/inventory.controller.ts`: POST /inventory/:variantId/stock-in, GET /inventory/:variantId/stock 엔드포인트 구현.
+- `apps/backend/src/modules/inventory/inventory.events.ts`: 이벤트 상수 정의 스텁.
+- `apps/backend/src/modules/inventory/inventory.module.ts`: InventoryService·InventoryRepository export.
+- `apps/backend/src/modules/inventory/inventory.exception.ts`: `InsufficientStockException` (BadRequestException 서브클래스) 정의.
+- `apps/backend/src/modules/inventory/dto/stock-in.dto.ts`: 입고 수량 DTO (@Min(1) 검증)
+- `apps/backend/src/modules/inventory/inventory.service.spec.ts`: InventoryService unit 테스트 (SC-041~042, SC-046)
+
+### shared 모듈
+
+- `apps/backend/src/shared/auth/admin.guard.ts`: **SEC-001 수정** — `ADMIN_USER_IDS` 환경변수(콤마구분 user id 목록) 기반 AdminGuard. 미설정 시 전원 거부(fail-closed).
+- `apps/backend/src/shared/auth/admin.guard.spec.ts`: AdminGuard SEC-001 회귀 방지 테스트 3건 (비admin→403, admin→pass, ADMIN_USER_IDS 미설정→전원403).
+- `apps/backend/src/shared/auth/auth-shared.module.ts`: OptionalJwtAuthGuard 내보내기 추가 (비인증 허용 엔드포인트용).
+- `apps/backend/src/shared/auth/optional-jwt-auth.guard.ts`: 토큰 없어도 통과, 있으면 검증 후 user 주입하는 guard 구현.
+
+### 정적 테스트 및 integration 테스트
+
+- `apps/backend/test/static/inventory-log-append-only.spec.ts`: SC-043 — InventoryRepository에 log update/delete 메서드 없음 정적 검증
+- `apps/backend/test/static/inventory-service-signature.spec.ts`: SC-044~045 — checkAvailability·decreaseStock 시그니처 정적 검증
+- `apps/backend/test/static/auth-required-guards.spec.ts`: SC-048 — 인증 필수 엔드포인트 JwtAuthGuard 메타데이터 정적 검증
+- `apps/backend/test/static/cross-schema.spec.ts`: SC-049 — 모듈별 타 스키마 Prisma 모델 직접 참조 금지 정적 검증
+- `apps/backend/test/static/schema-decimal.spec.ts`: SC-050 — schema.prisma price 필드 Decimal 타입 정적 검증
+- `apps/backend/test/static/package-no-aws.spec.ts`: SC-051 — @aws-sdk/* 신규 의존 없음 정적 검증
+- `apps/backend/test/products.e2e-spec.ts`: SC-047 — GET /products P95≤500ms integration 검증 (실측 P95=3ms)
+
+**후속 작업 시 주의사항**:
+
+- `InventoryService.decreaseStock`은 호출자의 트랜잭션 컨텍스트 내에서 실행됨을 전제로 설계됨(FR-034). 003-commerce에서 order 생성 트랜잭션 내에서 호출해야 원자성이 보장됨.
+- `ProductEventsHandler.handleStockChanged({productId, totalStock})` 이벤트 페이로드 형식은 inventory 모듈이 발행, product 모듈이 구독. 003에서 재고 차감 후 동일 이벤트를 발행해야 OUT_OF_STOCK 자동 전환이 작동함.
+- `OptionalJwtAuthGuard`: 비인증 사용자도 허용하는 엔드포인트(GET /products, GET /products/:id, GET /categories)에 사용. product.viewed 이벤트는 인증된 사용자에 한해 발행됨(service 내 user 존재 여부 체크).
+- **SEC-001 수정 완료**: seller 승인/거부 API에 `AdminGuard` 적용. `ADMIN_USER_IDS` 환경변수(콤마구분 user id) 기반 fail-closed 제어. 프로덕션 배포 전 `apps/backend/.env.example` 를 참고하여 ADMIN_USER_IDS 설정 필수. 미설정 시 승인/거부 전면 차단.
+- context.md / infra.md 갱신 필요 (gaps.md GAP-002·GAP-003 참조 — Retrospective Agent 처리 위임).
+
+---
+
 ## [001-skeleton-bootstrap] 구현 완료
 
 **변경 파일**:

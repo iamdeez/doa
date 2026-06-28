@@ -181,6 +181,7 @@ pnpm --filter backend test:e2e
 - [ ] Cloudflare R2 버킷 접근 권한 확인
 - [ ] Fly Postgres 백업 설정 확인 (prod)
 - [ ] GitHub Actions CI 전체 통과 확인
+- [ ] `ADMIN_USER_IDS` Fly secret 설정 확인 (seller 승인/거부 권한. **fail-closed** — 미설정 시 모든 승인 차단)
 
 ---
 
@@ -193,3 +194,4 @@ pnpm --filter backend test:e2e
 | Fly.io 리전 제약 | 단일 리전 배포(초기). 글로벌 레이턴시 최적화 미적용 | 전체 | 트래픽 분석 후 멀티 리전 검토 |
 | R2 서빙 도메인 | R2 공개 접근 시 Cloudflare 커스텀 도메인 설정 또는 R2.dev 서브도메인 사용 필요 | `file` 모듈 | 로드맵 1단계 파일 업로드 spec |
 | Vercel 무료 플랜 한계 | 빌드 시간·대역폭·팀 멤버 제한. 트래픽 증가 시 유료 전환 | console 웹 | — |
+| AdminGuard fail-closed 권한 | seller approve/reject 는 `ADMIN_USER_IDS` env 화이트리스트로만 인가. 미설정/오설정 시 전원 403(승인 업무 마비 vs 자가 승인 차단의 trade-off) | `seller` 모듈·운영 | 002-catalog (SEC-001 대응) |

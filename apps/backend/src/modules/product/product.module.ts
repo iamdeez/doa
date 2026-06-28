@@ -1,10 +1,19 @@
 import { Module } from '@nestjs/common';
-import { ProductController } from './product.controller';
+import { AuthSharedModule } from '../../shared/auth/auth-shared.module';
+import { InventoryModule } from '../inventory/inventory.module';
+import { SellerModule } from '../seller/seller.module';
+import {
+  CategoriesController,
+  ProductController,
+  SellerProductController,
+} from './product.controller';
+import { ProductEventsHandler } from './product.events';
 import { ProductRepository } from './product.repository';
 import { ProductService } from './product.service';
 
 @Module({
-  controllers: [ProductController],
-  providers: [ProductService, ProductRepository],
+  imports: [SellerModule, InventoryModule, AuthSharedModule],
+  controllers: [ProductController, CategoriesController, SellerProductController],
+  providers: [ProductService, ProductRepository, ProductEventsHandler],
 })
 export class ProductModule {}

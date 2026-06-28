@@ -17,8 +17,8 @@
 - **현재 버전**: v1.0.0
 - **주요 기술 스택**: Node.js + TypeScript, NestJS, Prisma, PostgreSQL 16, Turborepo
 
-> 골격 구축(로드맵 1단계, `001-skeleton-bootstrap`) 완료. `apps/backend`(NestJS 18모듈 — auth 실구현 + 17 스텁),
-> Prisma 8스키마·JWT 인증·멀티스테이지 Docker·GitHub Actions CI 가 실재하며, 검증(32/32 테스트 PASS) 완료됨.
+> 골격 구축(`001-skeleton-bootstrap`) + 카탈로그(`002-catalog`) 완료. `apps/backend`(NestJS 18모듈 — auth·user·seller·product·inventory **5개 실구현** + 13 스텁),
+> Prisma 12테이블·JWT 인증·AdminGuard·멀티스테이지 Docker·CI 가 실재한다. (001 골격 검증 32/32 PASS, 002 카탈로그 검증 101 PASS.)
 
 ---
 
@@ -88,15 +88,15 @@ Events (발행/구독 — NestJS EventEmitter)
 | `stats` | `admin` | 집계·통계·대시보드 |
 | `admin` | `admin` | 공지·시스템 설정·운영 |
 
-> **구현 상태 (v1.0.0 골격)**: `auth` 만 실구현(controller/service/repository/dto). 나머지 17개(user~admin)는
-> 4계층 빈 스텁(controller·service·repository·events·module 골격만, 비즈니스 로직 없음 — Stage 2~3 대상).
+> **구현 상태**: `auth`·`user`·`seller`·`product`·`inventory` **5개 실구현**(controller/service/repository/events/dto). 나머지 13개(cart~admin)는
+> 4계층 빈 스텁(골격만, 비즈니스 로직 없음 — Stage 3 대상).
 
 ### 공통(shared)·인프라 모듈 (실구현)
 
 | 모듈 | 위치 | 역할 |
 |---|---|---|
 | `health` | `src/health/` | 앱 alive 헬스체크 (GET /health, DB 미접근) |
-| `shared/auth` | `src/shared/auth/` | JwtStrategy · JwtAuthGuard · `@CurrentUser` 데코레이터 |
+| `shared/auth` | `src/shared/auth/` | JwtStrategy · JwtAuthGuard · OptionalJwtAuthGuard · AdminGuard(`ADMIN_USER_IDS` env 기반, fail-closed) · `@CurrentUser` 데코레이터 |
 | `shared/config` | `src/shared/config/` | jwt.config (Access 15분 / Refresh 30일 상수) |
 | `shared/prisma` | `src/shared/prisma/` | PrismaService · PrismaModule (DB 연결) |
 
@@ -131,6 +131,8 @@ Events (발행/구독 — NestJS EventEmitter)
 | `payment.refunded` | `payment` | `order`, `settlement`, `notification` | outbox + pg-boss |
 | `coupon.used` | `coupon` | `stats` | 인-프로세스 EventEmitter |
 | `file.uploaded` | `file` | — | 인-프로세스 (후처리 시 pg-boss) |
+| `inventory.stock-changed` | `inventory` | `product` | 인-프로세스 (ProductEventsHandler — ACTIVE↔OUT_OF_STOCK 자동 전이, FR-023/024). **002 실구현** |
+| `product.viewed` | `product` | `user` | 인-프로세스 (UserEventsHandler — 최근 본 상품 기록, FR-009). **002 실구현** |
 
 ### 3.3 상태 흐름 (state machine)
 
@@ -171,7 +173,7 @@ completed → refund_pending → refunded
 ```
 postgres (단일 인스턴스, Fly Postgres)
 ├── schema: users      (users, refresh_tokens, sellers, addresses, wishlists, product_views)
-├── schema: products   (categories, products, product_images, options, variants, inventory, inventory_logs)
+├── schema: products   (categories, products, product_images, variants, inventory, inventory_logs)
 ├── schema: commerce   (carts, coupons, user_coupons, reviews)
 ├── schema: orders     (orders, order_items, order_events, shipments, shipment_tracking)
 ├── schema: payments   (payments, refunds)
@@ -180,9 +182,9 @@ postgres (단일 인스턴스, Fly Postgres)
 └── schema: files      (files)
 ```
 
-> **v1.0.0 실재 상태**: `users` 스키마에 `users`·`refresh_tokens` 2개 테이블만 실체화(Prisma migrate 적용 완료).
-> 나머지 7개 스키마(products·commerce·orders·payments·settlements·admin·files)는 네임스페이스만 선언(테이블 0).
-> 위 괄호 안 테이블 목록은 각 도메인 실구현(Stage 2~3) 시 추가될 **목표** 구조다.
+> **실재 상태**: `users` 스키마 6테이블(users·refresh_tokens·sellers·addresses·wishlists·product_views) + `products` 스키마 6테이블(categories·products·product_images·variants·inventory·inventory_logs) = **12개 테이블 실체화**(Prisma migrate 적용).
+> 나머지 6개 스키마(commerce·orders·payments·settlements·admin·files)는 네임스페이스만 선언(테이블 0). Variant 가 옵션을 인라인 필드(optionName·optionValue)로 흡수 — 별도 options 테이블 없음.
+> 위 괄호 안 나머지 도메인 테이블(commerce~files)은 실구현(Stage 3) 시 추가될 **목표** 구조다.
 > Refresh Token 은 원문이 아닌 SHA-256 해시(`tokenHash`)로 저장된다(ADR-003).
 
 **주요 설계 결정 (비도출 지식)**:
@@ -206,6 +208,9 @@ postgres (단일 인스턴스, Fly Postgres)
 | 고객 앱 | Flutter 기반 iOS/Android 쇼핑 앱 (`mobile/customer-app`) | 유저 앱, user-app |
 | 워커(worker) | pg-boss 백그라운드 잡 처리 프로세스 (`apps/worker`) | 컨슈머, 큐 워커 |
 | strangler | 특정 모듈이 병목 시 해당 모듈만 별도 서비스로 분리하는 점진적 전환 패턴 | — |
+| cursor 페이지네이션 | OFFSET 대신 마지막 항목 id를 cursor로 사용하는 무한 스크롤형 목록 패턴 (ADR-007·NFR-001) | 오프셋 페이지네이션 |
+| variant | 상품 옵션 조합별 SKU 단위 (optionName·optionValue 인라인 흡수). 재고는 variant 단위로 관리 | (SKU와 혼용 주의) |
+| append-only | inventory_logs 등 이력 테이블은 INSERT만 허용, UPDATE·DELETE 금지 (이력 보존) | — |
 
 ---
 
@@ -213,7 +218,9 @@ postgres (단일 인스턴스, Fly Postgres)
 
 | 항목 | 내용 | 영향 범위 | 관련 spec |
 |---|---|---|---|
-| 17개 도메인 모듈 빈 스텁 | auth 외 17개 모듈(user~admin)은 4계층 골격만 존재, 비즈니스 로직 없음 | 해당 모듈 | Stage 2~3 |
+| 13개 도메인 모듈 빈 스텁 | auth·user·seller·product·inventory 외 13개 모듈(cart~admin)은 4계층 골격만 존재 | 해당 모듈 | Stage 3 |
+| inventory 재고입고 소유권 미검증 (SEC-002/IDOR) | `POST /inventory/:variantId/stock-in` 이 APPROVED 여부만 확인, variantId→product→seller 소유권 미검증 → 임의 APPROVED 판매자가 타 상품 재고·상태 조작 가능 | `inventory`·`product` | GAP-005 — 003 거래 spec에서 수정 |
+| cross-schema plain String 참조 (P-001·ADR-001) | users·products 스키마 간 FK 없음. Wishlist/ProductView.productId·Product.sellerId·InventoryLog.variantId 등 plain String 참조 → DB 수준 참조 무결성 없음(의도적), 삭제 시 고아 레코드 가능 | users·products 스키마 | 002-catalog |
 | pino-pretty 미설치 | 로컬 `NODE_ENV=development` 에서 pino-pretty transport 모듈 오류. e2e 는 `NODE_ENV=production`(JSON 로그) 우회 중. 해소: `pnpm add -D pino-pretty --filter backend` | `apps/backend` 로컬 dev 로그 | 001-skeleton-bootstrap |
 | 검색 성능 한계 | PostgreSQL tsvector/pg_trgm은 OpenSearch 대비 성능·기능 열위. 트래픽 증가 시 Meilisearch 도입 필요 | `search` 모듈 | — |
 | 단일 DB 단일 장애점 | Fly Postgres 단일 인스턴스. HA 옵션 미설정 시 장애 시 다운타임 발생 | 전체 | — |
