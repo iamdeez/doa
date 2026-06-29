@@ -1,3 +1,59 @@
+## [008-console-admin-polish] 구현 완료
+
+> v1.1.0 의 여덟 번째 차수 — **007(관리자 콘솔) 이후 폴리시 작업**: 관리자 쿠폰 화면(007 범위 외 예고)·
+> CouponManager 공유 컴포넌트 추출·다크모드 토글(002 GAP-002-01 부분 해소)·인앱 알림 화면(009 소비 UI).
+> base `e7d8ebb` → `99d34a9`. 커밋 3개: `5a14be6`(관리자 쿠폰 + CouponManager)·`4a446b2`(다크모드 + 알림)·
+> `99d34a9`(알림 경로 정정). 변경 라인은 `git diff e7d8ebb 99d34a9 -- apps/console packages` 로 재생성
+> (9 files, +464/-229). **마이그레이션 없음**(DB 스키마 변경 0). **신규 의존성 0**(`package.json` 변경 없음).
+> 선택 단계 전부 N.
+
+**변경 파일**:
+- `apps/console/components/coupon-manager.tsx`(신규): CouponManager 공유 컴포넌트. `CouponApi { list, create,
+  issue }` 인터페이스 의존성 주입·`queryScope`로 TanStack Query 캐시 키 분리(판매자/관리자 독립)·`discountLabel`·
+  `validate`(010 정합 클라이언트 검증)·`CreateDialog`(할인 유형 Select·할인값·최소주문·발급수량·만료일·mutation·
+  onSuccess invalidate·close·reset)·`IssueDialog`(userId Input·mutation·onSuccess invalidate).
+- `apps/console/app/(dashboard)/account/notifications/page.tsx`(신규): 인앱 알림 화면. `useQuery(['notifications'],
+  api.notification.list)`(`GET /notifications` → `NotificationListResult`) + `NotificationRow`(Badge info/
+  neutral·`TYPE_LABEL[n.type]`·`opacity-70` 읽음 표시·"읽음" Button → `markRead` mutation onSuccess invalidate)
+  + 헤더 "전체 읽음"(unread>0 시) → `markAllRead` mutation. 경로: `account/notifications`(99d34a9 경로 정정).
+- `apps/console/app/(dashboard)/seller/coupons/page.tsx`(수정): CouponManager 위임 리팩토링(235줄→~26줄).
+  `isSeller` 분기(EmptyState "판매자 미등록")·`queryScope="seller"` 유지. 기존 UX·동작 회귀 0.
+- `apps/console/app/(dashboard)/layout.tsx`(수정): 헤더 우측 액션에 `<ThemeToggle />` 추가. NAV 배열:
+  common 섹션에 "알림"(`/account/notifications`)·admin 섹션에 "쿠폰(관리자)"(`/admin/coupons`) 추가.
+- `apps/console/components/theme-toggle.tsx`(신규): 다크모드 토글 버튼. `documentElement.classList.toggle
+  ('dark', next)` + `localStorage.setItem('theme', ...)` 영속(try-catch 감싸 불가 환경 허용) + `useEffect`
+  마운트 시 `.dark` 상태 초기화 + `aria-label`.
+- `packages/shared-types/src/index.ts`: notification view 타입 3종(`NotificationType` 4 union·`Notification`·
+  `NotificationListResult`). 백엔드 `GET /notifications` 응답 OpenAPI 미정의이므로 전이형 한시 정의.
+- `packages/api-client/src/index.ts`: `notification` 도메인 facade(list·markRead·markAllRead) + `admin.
+  listCoupons`·`admin.createCoupon`·`admin.issueCoupon` 3 메서드 추가. 기존 facade·client·http 불변.
+- `apps/console/app/(dashboard)/admin/coupons/page.tsx`(신규): 관리자 쿠폰 화면. `CouponManager`에 `api.admin.
+  {listCoupons, createCoupon, issueCoupon}` 주입·`queryScope="admin"`·`title="쿠폰(관리자)"`.
+- `apps/console/app/layout.tsx`(수정): `THEME_SCRIPT`(`localStorage.getItem('theme')` + `prefers-color-scheme:
+  dark` → `classList.add('dark')`) 인라인 스크립트를 `<head>`에 삽입. `<html lang="ko" suppressHydrationWarning>`.
+
+**검증**: `pnpm --filter console typecheck` 0 error / `pnpm --filter console build` 모든 라우트 PASS(신규
+`/admin/coupons`·`/account/notifications` 포함) / 기존 화면(상품·계정·주문·배송·판매자 통계/정산/기존쿠폰)
+동작 회귀 0. 신규 단위/e2e 테스트 0(UI 화면 — 타입체크·빌드·정적 갈음). 변경 라인 직접 카운트
+(coupon-manager +247·notifications +83·seller/coupons +13/-222·dashboard/layout +12/-6·theme-toggle +34·
+shared-types +28·api-client +20·admin/coupons +20·app/layout +7/-1 = 9 files +464/-229).
+
+**해결**: 007 §범위 외 예고 `admin/coupons` 화면 구현. GAP-002-01(다크모드 토글 UI 부재) 부분 해소(FOUC
+방지 포함). 009 인앱 알림 이벤트 소비 UI 제공. 006 판매자 쿠폰 화면 CouponManager 공유화로 코드 중복 해소.
+
+**후속 작업 시 주의사항**:
+- **notification·admin 쿠폰 응답 view 타입 한시**: `GET /notifications`·`GET/POST /admin/coupons` 응답이 OpenAPI
+  미정의이므로 전이형 view 타입(`shared-types`)으로 한시 정의. 백엔드 `@ApiResponse({ type })` 보강 후 코드젠
+  생성 타입으로 대체 가능(004·006·007 GAP 연속 — GAP-008-01).
+- **알림 경로 정정 이력**: `4a446b2`에서 cwd 버그로 `account/notification`(단수) 위치에 잘못 생성, `99d34a9`에서
+  `account/notifications`(복수)로 정정 완료. 향후 알림 관련 링크·라우트는 `notifications`(복수) 사용.
+- **CouponManager queryScope 분리**: 판매자 쿠폰·관리자 쿠폰은 `queryScope`("seller"/"admin")로 캐시 키가 분리된다.
+  향후 `CouponManager`에 추가 소비처를 붙일 때 고유한 `queryScope` 문자열을 사용할 것.
+- **다크모드 시스템 모드 실시간 감지 미지원**: `THEME_SCRIPT`는 초기 로드 시만 `prefers-color-scheme`을 확인한다.
+  런타임 시스템 모드 변경 감지는 후속 스펙에서 `matchMedia` 이벤트 리스너로 추가 필요.
+
+---
+
 ## [007-admin-console] 구현 완료
 
 > v1.1.0 의 일곱 번째 차수 — **FRONTEND-PLAN Phase 3(관리자 운영 콘솔 — 플랫폼 통계·전체 정산·사용자·감사
