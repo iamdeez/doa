@@ -66,6 +66,12 @@ const MONEY_FIELDS: Array<{ fieldName: string; sc: string }> = [
   { fieldName: 'discountValue', sc: 'SC-050(004)' },
   { fieldName: 'maxDiscountAmount', sc: 'SC-050(004)' },
   { fieldName: 'minOrderAmount', sc: 'SC-050(004)' },
+  // 005-settlement: 정산 금전 필드
+  { fieldName: 'totalSales', sc: '005(settlement)' },
+  { fieldName: 'commission', sc: '005(settlement)' },
+  { fieldName: 'payoutAmount', sc: '005(settlement)' },
+  { fieldName: 'saleAmount', sc: '005(settlement)' },
+  { fieldName: 'commissionAmount', sc: '005(settlement)' },
 ];
 
 describe('SC-050/SC-049: 금전 필드 Decimal 타입 정적 검증', () => {

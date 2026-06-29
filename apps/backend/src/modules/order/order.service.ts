@@ -315,6 +315,105 @@ export class OrderService {
     return orders.length;
   }
 
+  // ── 배송 연동 (005-shipping) ─────────────────────────────────────────
+
+  /**
+   * 송장 등록에 따른 주문 상태 전이 — preparing → shipped.
+   * ShippingService 가 DI 경유로 호출 (P-001: cross-schema 직접 접근 금지).
+   * 판매자 소유권 검증(items 중 sellerId 일치) 포함. shipping 트랜잭션 내부에서 호출되어 원자성 보장.
+   */
+  async markShipped(orderId: string, sellerId: string): Promise<void> {
+    const order = await this.orderRepository.findById(orderId);
+    if (!order) throw new NotFoundException('Order not found');
+
+    const hasSellersItem = order.items.some((i) => i.sellerId === sellerId);
+    if (!hasSellersItem) throw new ForbiddenException('Not your order');
+
+    if (order.status !== OrderStatus.preparing) {
+      throw new BadRequestException(
+        `Cannot ship order with status: ${order.status}`,
+      );
+    }
+
+    await this.orderRepository.updateStatus(orderId, OrderStatus.shipped);
+    await this.orderRepository.appendEvent({
+      orderId,
+      fromStatus: order.status,
+      toStatus: OrderStatus.shipped,
+      actorType: ActorType.SELLER,
+      actorId: sellerId,
+    });
+  }
+
+  /**
+   * 배송 완료에 따른 주문 상태 전이 — shipped → delivered (deliveredAt 기록).
+   * ShippingService 가 배송 상태를 delivered 로 업데이트할 때 DI 경유로 호출.
+   * 멱등: 이미 delivered 이상이면 no-op.
+   */
+  async markDelivered(orderId: string, sellerId: string): Promise<void> {
+    const order = await this.orderRepository.findById(orderId);
+    if (!order) throw new NotFoundException('Order not found');
+
+    const hasSellersItem = order.items.some((i) => i.sellerId === sellerId);
+    if (!hasSellersItem) throw new ForbiddenException('Not your order');
+
+    if (order.status === OrderStatus.delivered) return; // 멱등
+
+    if (order.status !== OrderStatus.shipped) {
+      throw new BadRequestException(
+        `Cannot mark delivered for order with status: ${order.status}`,
+      );
+    }
+
+    await this.orderRepository.updateStatus(orderId, OrderStatus.delivered, {
+      deliveredAt: new Date(),
+    });
+    await this.orderRepository.appendEvent({
+      orderId,
+      fromStatus: order.status,
+      toStatus: OrderStatus.delivered,
+      actorType: ActorType.SELLER,
+      actorId: sellerId,
+    });
+  }
+
+  /**
+   * 주문 접근 권한 정보 — 배송 추적 조회 권한 3축 판정용 (구매자 본인 또는 판매자).
+   * ShippingService 가 DI 경유로 소비 (P-001 경계 준수).
+   */
+  async getOrderOwnership(
+    orderId: string,
+  ): Promise<{ userId: string; sellerIds: string[] }> {
+    const order = await this.orderRepository.findById(orderId);
+    if (!order) throw new NotFoundException('Order not found');
+    const sellerIds = [...new Set(order.items.map((i) => i.sellerId))];
+    return { userId: order.userId, sellerIds };
+  }
+
+  // ── 정산 연동 (005-settlement) ───────────────────────────────────────
+
+  /**
+   * 정산 집계용 — 판매자의 기간 내 completed 주문항목 매출 명세 반환.
+   * SettlementService 가 DI 경유로 소비 (P-001: settlements 모듈이 orders 스키마 직접 접근 금지).
+   * saleAmount = unitPrice × quantity (Decimal 정확 계산).
+   */
+  async getCompletedItemsForSettlement(
+    sellerId: string,
+    periodStart: Date,
+    periodEnd: Date,
+  ): Promise<Array<{ orderId: string; orderItemId: string; saleAmount: Prisma.Decimal }>> {
+    const rows = await this.orderRepository.findCompletedItemsBySellerInPeriod(
+      sellerId,
+      periodStart,
+      periodEnd,
+    );
+    return rows.map((r) => ({
+      orderId: r.orderId,
+      orderItemId: r.orderItemId,
+      saleAmount: new Prisma.Decimal(r.unitPrice).mul(r.quantity),
+    }));
+  }
+
   /**
    * 구매 확정 처리 — pending → confirmed.
    * ADR-007: OutboxRelay 에서 payment.completed 이벤트 수신 후 호출.

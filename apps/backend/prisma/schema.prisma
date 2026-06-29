@@ -465,6 +465,53 @@ model OrderEvent {
 }
 
 // ============================================================
+// orders 스키마 — 005-shipping 배송 관리 테이블
+// ============================================================
+
+/// 배송 상태 enum. 전이: preparing → shipped → in_transit → delivered (FR-shipping)
+enum ShipmentStatus {
+  preparing
+  shipped
+  in_transit
+  delivered
+
+  @@schema("orders")
+}
+
+/// 배송. shipping 모듈 소유 테이블 (물리적으로 orders 스키마, 논리적 소유는 shipping 모듈, P-001).
+/// orderId 는 cross-module plain String — orders.orders.id 참조하지만 FK 미선언 (모듈 경계).
+model Shipment {
+  id             String             @id @default(cuid())
+  /// cross-module plain String — orders.orders.id 참조하지만 FK 미선언 (P-001 모듈 경계).
+  orderId        String
+  status         ShipmentStatus     @default(preparing)
+  carrier        String
+  trackingNumber String
+  shippedAt      DateTime?
+  deliveredAt    DateTime?
+  createdAt      DateTime           @default(now())
+  tracking       ShipmentTracking[]
+
+  @@index([orderId])
+  @@map("shipments")
+  @@schema("orders")
+}
+
+/// 배송 추적 이력. append-only — UPDATE/DELETE 미사용. shipmentId 동일 모듈 FK.
+model ShipmentTracking {
+  id          String         @id @default(cuid())
+  shipmentId  String
+  status      ShipmentStatus
+  description String
+  occurredAt  DateTime       @default(now())
+  shipment    Shipment       @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+
+  @@index([shipmentId, occurredAt(sort: Desc)])
+  @@map("shipment_tracking")
+  @@schema("orders")
+}
+
+// ============================================================
 // payments 스키마 — 003-commerce 실체화 테이블
 // ============================================================
 
@@ -547,4 +594,60 @@ model PaymentOutbox {
   @@index([paymentId])
   @@map("payment_outbox")
   @@schema("payments")
+}
+
+// ============================================================
+// settlements 스키마 — 005-settlement 판매자 정산 테이블
+// ============================================================
+
+/// 정산 상태 enum. pending: 집계 완료·지급 대기 | completed: 지급 완료
+enum SettlementStatus {
+  pending
+  completed
+
+  @@schema("settlements")
+}
+
+/// 판매자 정산. 기간별 1건. sellerId cross-schema plain String (users.sellers.id, P-001).
+/// 금전 필드(totalSales·commission·payoutAmount) Decimal(12,2) — 부동소수점 금지 (P-005).
+/// payoutAmount = totalSales - commission, commission = totalSales × COMMISSION_RATE.
+model Settlement {
+  id           String           @id @default(cuid())
+  /// cross-schema plain String — users.sellers.id 참조하지만 FK 미선언 (P-001 경계)
+  sellerId     String
+  periodStart  DateTime
+  periodEnd    DateTime
+  /// 금전 필드 — 정산 기간 총 매출 (P-005)
+  totalSales   Decimal          @db.Decimal(12, 2)
+  /// 금전 필드 — 플랫폼 수수료 (P-005)
+  commission   Decimal          @db.Decimal(12, 2)
+  /// 금전 필드 — 실 지급액 = totalSales - commission (P-005)
+  payoutAmount Decimal          @db.Decimal(12, 2)
+  status       SettlementStatus @default(pending)
+  createdAt    DateTime         @default(now())
+  items        SettlementItem[]
+
+  @@index([sellerId, createdAt(sort: Desc)])
+  @@map("settlements")
+  @@schema("settlements")
+}
+
+/// 정산 항목. 정산에 포함된 completed 주문항목 단위 명세. settlementId 동일 모듈 FK.
+/// orderId/orderItemId cross-schema plain String (orders 스키마, P-001).
+model SettlementItem {
+  id               String     @id @default(cuid())
+  settlementId     String
+  /// cross-schema plain String — orders.orders.id (P-001 경계)
+  orderId          String
+  /// cross-schema plain String — orders.order_items.id (P-001 경계)
+  orderItemId      String
+  /// 금전 필드 — 항목 매출 = unitPrice × quantity (P-005)
+  saleAmount       Decimal    @db.Decimal(12, 2)
+  /// 금전 필드 — 항목 수수료 = saleAmount × COMMISSION_RATE (P-005)
+  commissionAmount Decimal    @db.Decimal(12, 2)
+  settlement       Settlement @relation(fields: [settlementId], references: [id], onDelete: Cascade)
+
+  @@index([settlementId])
+  @@map("settlement_items")
+  @@schema("settlements")
 }

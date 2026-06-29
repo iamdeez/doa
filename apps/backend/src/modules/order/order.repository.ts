@@ -140,4 +140,32 @@ export class OrderRepository {
       include: { order: true },
     });
   }
+
+  /**
+   * 정산 집계용 — 특정 판매자의 completed 주문항목을 기간 내(주문 생성일 기준) 조회.
+   * P-001: orders 스키마 내 join (order + order_items). settlement 모듈이 OrderService DI 경유로 소비.
+   */
+  async findCompletedItemsBySellerInPeriod(
+    sellerId: string,
+    periodStart: Date,
+    periodEnd: Date,
+  ): Promise<Array<{ orderId: string; orderItemId: string; unitPrice: Prisma.Decimal; quantity: number }>> {
+    const orders = await this.prisma.tx.order.findMany({
+      where: {
+        status: OrderStatus.completed,
+        createdAt: { gte: periodStart, lte: periodEnd },
+        items: { some: { sellerId } },
+      },
+      include: { items: { where: { sellerId } } },
+    });
+
+    return orders.flatMap((order) =>
+      order.items.map((item) => ({
+        orderId: order.id,
+        orderItemId: item.id,
+        unitPrice: item.unitPrice,
+        quantity: item.quantity,
+      })),
+    );
+  }
 }

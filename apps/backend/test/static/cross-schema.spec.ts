@@ -171,6 +171,33 @@ const CROSS_SCHEMA_RULES: Array<{
     ],
     label: 'ReviewRepository (SC-054)',
   },
+  // ── 005-shipping/settlement 규칙 ──
+  // ShippingRepository: 자신의 소유 테이블(shipments, shipment_tracking)만 접근.
+  // order/order_items/order_events 등 order 모듈 테이블은 OrderService DI 경유 → 직접 참조 금지.
+  {
+    file: 'src/modules/shipping/shipping.repository.ts',
+    forbiddenModels: [
+      ...PRODUCTS_SCHEMA_MODELS,
+      ...USERS_SCHEMA_MODELS,
+      ...COMMERCE_SCHEMA_MODELS,
+      ...ORDERS_SCHEMA_MODELS,
+      ...PAYMENTS_SCHEMA_MODELS,
+    ],
+    label: 'ShippingRepository (005)',
+  },
+  // SettlementRepository: 자신의 소유 테이블(settlements, settlement_items)만 접근.
+  // orders 스키마 집계는 OrderService DI 경유 → 직접 참조 금지.
+  {
+    file: 'src/modules/settlement/settlement.repository.ts',
+    forbiddenModels: [
+      ...PRODUCTS_SCHEMA_MODELS,
+      ...USERS_SCHEMA_MODELS,
+      ...COMMERCE_SCHEMA_MODELS,
+      ...ORDERS_SCHEMA_MODELS,
+      ...PAYMENTS_SCHEMA_MODELS,
+    ],
+    label: 'SettlementRepository (005)',
+  },
 ];
 
 /**
