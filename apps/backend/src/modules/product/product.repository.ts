@@ -85,6 +85,53 @@ export class ProductRepository {
     });
   }
 
+  /**
+   * 검색/필터 (006-search, offset 페이지네이션):
+   * 공개 상품(ACTIVE+OUT_OF_STOCK)만 대상. 키워드는 title 부분일치(대소문자 무시).
+   * 정렬: latest(최신순) | price_asc | price_desc.
+   * items + total 동시 반환 — 페이지 메타 계산용.
+   */
+  async searchProducts(params: {
+    q?: string;
+    categoryId?: string;
+    minPrice?: Prisma.Decimal;
+    maxPrice?: Prisma.Decimal;
+    sort: 'latest' | 'price_asc' | 'price_desc';
+    skip: number;
+    take: number;
+  }): Promise<{ items: (Product & { images: ProductImage[] })[]; total: number }> {
+    const priceFilter: Prisma.DecimalFilter = {};
+    if (params.minPrice !== undefined) priceFilter.gte = params.minPrice;
+    if (params.maxPrice !== undefined) priceFilter.lte = params.maxPrice;
+
+    const where: Prisma.ProductWhereInput = {
+      status: { in: [ProductStatus.ACTIVE, ProductStatus.OUT_OF_STOCK] },
+      ...(params.q ? { title: { contains: params.q, mode: 'insensitive' } } : {}),
+      ...(params.categoryId ? { categoryId: params.categoryId } : {}),
+      ...(Object.keys(priceFilter).length > 0 ? { price: priceFilter } : {}),
+    };
+
+    const orderBy: Prisma.ProductOrderByWithRelationInput[] =
+      params.sort === 'price_asc'
+        ? [{ price: 'asc' }, { id: 'desc' }]
+        : params.sort === 'price_desc'
+          ? [{ price: 'desc' }, { id: 'desc' }]
+          : [{ createdAt: 'desc' }, { id: 'desc' }];
+
+    const [items, total] = await Promise.all([
+      this.prisma.product.findMany({
+        where,
+        orderBy,
+        skip: params.skip,
+        take: params.take,
+        include: { images: { orderBy: { displayOrder: 'asc' } } },
+      }),
+      this.prisma.product.count({ where }),
+    ]);
+
+    return { items, total };
+  }
+
   // ── Variant ───────────────────────────────────────────────────────
 
   async findVariantById(id: string): Promise<Variant | null> {

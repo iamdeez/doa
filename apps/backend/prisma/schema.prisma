@@ -651,3 +651,75 @@ model SettlementItem {
   @@map("settlement_items")
   @@schema("settlements")
 }
+
+// ============================================================
+// users 스키마 — 006-notification 사용자 알림 테이블
+// ============================================================
+
+/// 알림 종류. 도메인 이벤트(주문·배송·정산·리뷰)에 대응.
+enum NotificationType {
+  ORDER_PLACED
+  ORDER_SHIPPED
+  SETTLEMENT_CREATED
+  REVIEW_RECEIVED
+
+  @@schema("users")
+}
+
+/// 사용자 알림. userId cross-schema plain String (users.users.id, P-001 — FK 미선언).
+/// notification 모듈 소유 테이블 — User 모델과 @relation 미선언 (모듈 경계 P-001).
+model Notification {
+  id        String           @id @default(cuid())
+  /// cross-schema plain String — users.users.id 참조하지만 FK 미선언 (P-001 경계)
+  userId    String
+  type      NotificationType
+  title     String
+  body      String
+  isRead    Boolean          @default(false)
+  createdAt DateTime         @default(now())
+
+  @@index([userId, isRead, createdAt(sort: Desc)])
+  @@map("notifications")
+  @@schema("users")
+}
+
+// ============================================================
+// files 스키마 — 006-file 파일 메타데이터 테이블
+// ============================================================
+
+/// 파일 용도. presign 시 객체 키 prefix·접근 정책 분기에 사용.
+enum FilePurpose {
+  PRODUCT_IMAGE
+  REVIEW_IMAGE
+  PROFILE
+
+  @@schema("files")
+}
+
+/// 파일 업로드 상태. PENDING: presign 발급·업로드 대기 | UPLOADED: 업로드 확인 완료.
+enum FileStatus {
+  PENDING
+  UPLOADED
+
+  @@schema("files")
+}
+
+/// 파일 메타데이터. 실제 바이너리는 R2(객체 스토리지)에 저장, 본 테이블은 메타만 관리.
+/// ownerId cross-schema plain String (users.users.id, P-001 — FK 미선언).
+model FileAsset {
+  id          String      @id @default(cuid())
+  /// cross-schema plain String — users.users.id 참조하지만 FK 미선언 (P-001 경계)
+  ownerId     String
+  purpose     FilePurpose
+  /// R2 객체 키 — {purpose}/{ownerId}/{uuid} 형태
+  key         String      @unique
+  url         String
+  contentType String
+  size        Int         @default(0)
+  status      FileStatus  @default(PENDING)
+  createdAt   DateTime    @default(now())
+
+  @@index([ownerId, createdAt(sort: Desc)])
+  @@map("files")
+  @@schema("files")
+}

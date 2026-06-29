@@ -212,6 +212,31 @@ export class ProductService {
     return { items, nextCursor };
   }
 
+  /**
+   * 006-search 지원: 검색/필터 결과 조회 (offset 페이지네이션).
+   * search 도메인이 DI 로 호출하는 read-only 공개 메서드 (P-001 — products 스키마 소유자 경유).
+   * 가격은 number/string 으로 받아 Decimal 로 변환. skip/take/sort 는 호출 측에서 정규화하여 전달.
+   */
+  async searchProducts(params: {
+    q?: string;
+    categoryId?: string;
+    minPrice?: number | string;
+    maxPrice?: number | string;
+    sort: 'latest' | 'price_asc' | 'price_desc';
+    skip: number;
+    take: number;
+  }): Promise<{ items: unknown[]; total: number }> {
+    return this.productRepository.searchProducts({
+      q: params.q,
+      categoryId: params.categoryId,
+      minPrice: params.minPrice !== undefined ? new Prisma.Decimal(params.minPrice) : undefined,
+      maxPrice: params.maxPrice !== undefined ? new Prisma.Decimal(params.maxPrice) : undefined,
+      sort: params.sort,
+      skip: params.skip,
+      take: params.take,
+    });
+  }
+
   async getDetail(productId: string, user?: { userId: string }) {
     const product = await this.productRepository.findById(productId);
     if (

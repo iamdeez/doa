@@ -198,6 +198,33 @@ const CROSS_SCHEMA_RULES: Array<{
     ],
     label: 'SettlementRepository (005)',
   },
+  // ── 006-notification/file 규칙 ──
+  // NotificationRepository: 자신의 소유 테이블(users.notifications)만 접근.
+  // user/seller 등 users 스키마 타 모델 및 타 스키마 모델 직접 참조 금지.
+  {
+    file: 'src/modules/notification/notification.repository.ts',
+    forbiddenModels: [
+      ...PRODUCTS_SCHEMA_MODELS,
+      ...USERS_SCHEMA_MODELS,
+      ...COMMERCE_SCHEMA_MODELS,
+      ...ORDERS_SCHEMA_MODELS,
+      ...PAYMENTS_SCHEMA_MODELS,
+    ],
+    label: 'NotificationRepository (006)',
+  },
+  // FileRepository: 자신의 소유 테이블(files.files = fileAsset)만 접근.
+  // owner 조회 등 users 스키마 및 타 스키마 모델 직접 참조 금지.
+  {
+    file: 'src/modules/file/file.repository.ts',
+    forbiddenModels: [
+      ...PRODUCTS_SCHEMA_MODELS,
+      ...USERS_SCHEMA_MODELS,
+      ...COMMERCE_SCHEMA_MODELS,
+      ...ORDERS_SCHEMA_MODELS,
+      ...PAYMENTS_SCHEMA_MODELS,
+    ],
+    label: 'FileRepository (006)',
+  },
 ];
 
 /**
