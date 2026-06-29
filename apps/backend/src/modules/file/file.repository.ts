@@ -25,6 +25,18 @@ export class FileRepository {
     return this.prisma.tx.fileAsset.findUnique({ where: { id } });
   }
 
+  /** 업로드 확정 — status·size 갱신 (011 GAP-006-02). */
+  async updateStatus(
+    id: string,
+    status: FileStatus,
+    size: number,
+  ): Promise<FileAsset> {
+    return this.prisma.tx.fileAsset.update({
+      where: { id },
+      data: { status, size },
+    });
+  }
+
   async delete(id: string): Promise<void> {
     await this.prisma.tx.fileAsset.delete({ where: { id } });
   }

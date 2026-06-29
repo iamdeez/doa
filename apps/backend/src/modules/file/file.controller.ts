@@ -12,6 +12,7 @@ import {
 import { CurrentUser } from '../../shared/auth/current-user.decorator';
 import { JwtAuthGuard } from '../../shared/auth/jwt-auth.guard';
 import { AuthenticatedUser } from '../../shared/auth/jwt.strategy';
+import { ConfirmFileDto } from './dto/confirm-file.dto';
 import { PresignDto } from './dto/presign.dto';
 import { FileService } from './file.service';
 
@@ -31,10 +32,20 @@ export class FileController {
     return this.fileService.presign(user.userId, dto);
   }
 
-  /** GET /files/:id — 파일 메타 조회 */
+  /** GET /files/:id — 파일 메타 조회 (소유자 전용) */
   @Get(':id')
-  getById(@Param('id') id: string) {
-    return this.fileService.getById(id);
+  getById(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.fileService.getById(user.userId, id);
+  }
+
+  /** POST /files/:id/confirm — 업로드 확정(PENDING→UPLOADED + size), 소유자 전용 */
+  @Post(':id/confirm')
+  confirm(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body() dto: ConfirmFileDto,
+  ) {
+    return this.fileService.confirm(user.userId, id, dto.size);
   }
 
   /** DELETE /files/:id — 본인 소유 파일 삭제 */

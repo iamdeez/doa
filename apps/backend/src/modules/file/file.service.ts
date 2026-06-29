@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import {
+  BadRequestException,
   ForbiddenException,
   Inject,
   Injectable,
@@ -8,6 +9,7 @@ import {
 import { FileAsset, FilePurpose, FileStatus } from '@prisma/client';
 import { FILE_STORAGE, FileStoragePort } from './file-storage.port';
 import { FileRepository } from './file.repository';
+import { ALLOWED_CONTENT_TYPES, MAX_FILE_SIZE_BYTES } from './file.constants';
 
 export interface PresignResult {
   id: string;
@@ -36,6 +38,13 @@ export class FileService {
     userId: string,
     data: { purpose: FilePurpose; contentType: string },
   ): Promise<PresignResult> {
+    // SEC-FIND-006-02: contentType allowlist — 허용 이미지 MIME 만 presign.
+    if (!(ALLOWED_CONTENT_TYPES as readonly string[]).includes(data.contentType)) {
+      throw new BadRequestException(
+        `Unsupported contentType: ${data.contentType}`,
+      );
+    }
+
     const key = `${data.purpose}/${userId}/${randomUUID()}`;
     const { uploadUrl, publicUrl } = await this.storage.getPresignedUploadUrl(
       key,
@@ -55,13 +64,40 @@ export class FileService {
     return { id: file.id, key: file.key, uploadUrl, url: file.url };
   }
 
-  /** 파일 메타 조회. 미존재 → 404 */
-  async getById(id: string): Promise<FileAsset> {
+  /** 파일 메타 조회 — 소유자 전용(SEC-FIND-006-01 IDOR 차단). 미존재 → 404, 타인 소유 → 403 */
+  async getById(userId: string, id: string): Promise<FileAsset> {
     const file = await this.fileRepository.findById(id);
     if (!file) {
       throw new NotFoundException('File not found');
     }
+    if (file.ownerId !== userId) {
+      throw new ForbiddenException('Not your file');
+    }
     return file;
+  }
+
+  /**
+   * 업로드 확정 — 소유자가 presigned URL 업로드 완료 후 호출(GAP-006-02).
+   * PENDING → UPLOADED 전이 + size 기록. 미존재 → 404, 타인 소유 → 403,
+   * 이미 UPLOADED → 멱등(그대로 반환), size 범위 위반 → 400.
+   */
+  async confirm(userId: string, id: string, size: number): Promise<FileAsset> {
+    if (!Number.isInteger(size) || size <= 0 || size > MAX_FILE_SIZE_BYTES) {
+      throw new BadRequestException(
+        `size must be an integer in 1..${MAX_FILE_SIZE_BYTES}`,
+      );
+    }
+    const file = await this.fileRepository.findById(id);
+    if (!file) {
+      throw new NotFoundException('File not found');
+    }
+    if (file.ownerId !== userId) {
+      throw new ForbiddenException('Not your file');
+    }
+    if (file.status === FileStatus.UPLOADED) {
+      return file; // 멱등
+    }
+    return this.fileRepository.updateStatus(id, FileStatus.UPLOADED, size);
   }
 
   /** 파일 삭제. 미존재 → 404, 타인 소유 → 403 */

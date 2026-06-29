@@ -10,6 +10,7 @@
  */
 
 import {
+  BadRequestException,
   ForbiddenException,
   NotFoundException,
 } from '@nestjs/common';
@@ -19,10 +20,12 @@ import { FILE_STORAGE } from './file-storage.port';
 import { FileRepository } from './file.repository';
 import { FileService } from './file.service';
 import { StubFileStorage } from './stub-file-storage';
+import { MAX_FILE_SIZE_BYTES } from './file.constants';
 
 const mockRepo = {
   create: jest.fn(),
   findById: jest.fn(),
+  updateStatus: jest.fn(),
   delete: jest.fn(),
 };
 
@@ -97,20 +100,103 @@ describe('FileService', () => {
 
       expect(r1.key).not.toBe(r2.key);
     });
+
+    it('when_contentType_not_allowed_then_BadRequest (SEC-FIND-006-02)', async () => {
+      await expect(
+        service.presign(USER_ID, {
+          purpose: FilePurpose.PRODUCT_IMAGE,
+          contentType: 'application/pdf',
+        }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(mockRepo.create).not.toHaveBeenCalled();
+    });
   });
 
   describe('getById', () => {
     it('when_missing_then_NotFound', async () => {
       mockRepo.findById.mockResolvedValue(null);
-      await expect(service.getById(FILE_ID)).rejects.toBeInstanceOf(
+      await expect(service.getById(USER_ID, FILE_ID)).rejects.toBeInstanceOf(
         NotFoundException,
       );
     });
 
-    it('when_found_then_returns_meta', async () => {
+    it('when_owned_by_user_then_returns_meta', async () => {
       const file = { id: FILE_ID, ownerId: USER_ID };
       mockRepo.findById.mockResolvedValue(file);
-      await expect(service.getById(FILE_ID)).resolves.toBe(file);
+      await expect(service.getById(USER_ID, FILE_ID)).resolves.toBe(file);
+    });
+
+    it('when_owned_by_other_then_Forbidden (SEC-FIND-006-01)', async () => {
+      mockRepo.findById.mockResolvedValue({ id: FILE_ID, ownerId: OTHER_USER_ID });
+      await expect(service.getById(USER_ID, FILE_ID)).rejects.toBeInstanceOf(
+        ForbiddenException,
+      );
+    });
+  });
+
+  describe('confirm (GAP-006-02)', () => {
+    it('when_owner_confirms_then_status_UPLOADED_and_size_set', async () => {
+      mockRepo.findById.mockResolvedValue({
+        id: FILE_ID,
+        ownerId: USER_ID,
+        status: FileStatus.PENDING,
+      });
+      mockRepo.updateStatus.mockResolvedValue({
+        id: FILE_ID,
+        status: FileStatus.UPLOADED,
+        size: 1234,
+      });
+
+      await service.confirm(USER_ID, FILE_ID, 1234);
+
+      expect(mockRepo.updateStatus).toHaveBeenCalledWith(
+        FILE_ID,
+        FileStatus.UPLOADED,
+        1234,
+      );
+    });
+
+    it('when_owned_by_other_then_Forbidden', async () => {
+      mockRepo.findById.mockResolvedValue({
+        id: FILE_ID,
+        ownerId: OTHER_USER_ID,
+        status: FileStatus.PENDING,
+      });
+      await expect(service.confirm(USER_ID, FILE_ID, 100)).rejects.toBeInstanceOf(
+        ForbiddenException,
+      );
+      expect(mockRepo.updateStatus).not.toHaveBeenCalled();
+    });
+
+    it('when_missing_then_NotFound', async () => {
+      mockRepo.findById.mockResolvedValue(null);
+      await expect(service.confirm(USER_ID, FILE_ID, 100)).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
+    });
+
+    it('when_already_uploaded_then_idempotent_no_update', async () => {
+      const uploaded = {
+        id: FILE_ID,
+        ownerId: USER_ID,
+        status: FileStatus.UPLOADED,
+      };
+      mockRepo.findById.mockResolvedValue(uploaded);
+      await expect(service.confirm(USER_ID, FILE_ID, 100)).resolves.toBe(uploaded);
+      expect(mockRepo.updateStatus).not.toHaveBeenCalled();
+    });
+
+    it('when_size_over_limit_then_BadRequest', async () => {
+      await expect(
+        service.confirm(USER_ID, FILE_ID, MAX_FILE_SIZE_BYTES + 1),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(mockRepo.findById).not.toHaveBeenCalled();
+    });
+
+    it('when_size_not_positive_then_BadRequest', async () => {
+      await expect(service.confirm(USER_ID, FILE_ID, 0)).rejects.toBeInstanceOf(
+        BadRequestException,
+      );
     });
   });
 
