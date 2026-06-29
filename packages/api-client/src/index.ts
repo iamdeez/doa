@@ -3,11 +3,14 @@ import type {
   Address,
   AuthTokens,
   Category,
+  Coupon,
   CreateAddressRequest,
+  CreateCouponRequest,
   CreateProductRequest,
   CreateShipmentRequest,
   CreateVariantRequest,
   CursorPage,
+  IssueCouponRequest,
   ListProductsQuery,
   LoginRequest,
   Product,
@@ -19,13 +22,16 @@ import type {
   SellerOrderDetail,
   SellerProfile,
   SellerRegisterRequest,
+  SellerStats,
   SellerStatusResponse,
+  SettlementView,
   Shipment,
   ShipmentTracking,
   StockInRequest,
   UpdateAddressRequest,
   UpdateProfileRequest,
   UpdateShipmentStatusRequest,
+  UserCoupon,
   UserProfile,
   WishlistItem,
 } from '@doa/shared-types';
@@ -158,6 +164,30 @@ export function createApiClient(options: HttpClientOptions) {
         http.patch<Shipment>(`/shipments/${id}/status`, body),
       /** GET /shipments/:id/tracking — 추적 이력(권한 3축: 구매자/판매자). */
       tracking: (id: string) => http.get<ShipmentTracking[]>(`/shipments/${id}/tracking`),
+    },
+
+    stats: {
+      /** GET /seller/stats — 판매자 본인 매출·주문 요약. */
+      seller: () => http.get<SellerStats>('/seller/stats'),
+    },
+
+    settlement: {
+      /** GET /settlements — 판매자 본인 정산 내역(최신순). */
+      listMine: () => http.get<SettlementView[]>('/settlements'),
+    },
+
+    coupon: {
+      /** GET /sellers/me/coupons — 판매자 발급 쿠폰 목록(cursor). */
+      listSeller: (cursor?: string, take?: number) =>
+        http.get<CursorPage<Coupon>>('/sellers/me/coupons', {
+          query: { cursor, take },
+        }),
+      /** POST /sellers/me/coupons — 쿠폰 생성(APPROVED 판매자). */
+      createSeller: (body: CreateCouponRequest) =>
+        http.post<Coupon>('/sellers/me/coupons', body),
+      /** POST /sellers/me/coupons/:id/issue — 대상 사용자에게 발급. */
+      issueSeller: (couponId: string, body: IssueCouponRequest) =>
+        http.post<UserCoupon>(`/sellers/me/coupons/${couponId}/issue`, body),
     },
   };
 }

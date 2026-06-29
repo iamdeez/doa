@@ -321,3 +321,73 @@ export interface UpdateShipmentStatusRequest {
   status: ShipmentStatus;
   description?: string;
 }
+
+// ---------------------------------------------------------------------------
+// stats / settlement / coupon (Phase 2 — 판매자 통계·정산·쿠폰)
+// 금전 필드는 Decimal → JSON 문자열.
+// ---------------------------------------------------------------------------
+
+/** GET /seller/stats — 판매자 요약. */
+export interface SellerStats {
+  salesTotal: string;
+  orderCount: number;
+}
+
+export type SettlementStatus = 'pending' | 'completed';
+
+/** GET /settlements — 판매자 본인 정산 1건. */
+export interface SettlementView {
+  id: string;
+  sellerId: string;
+  periodStart: string;
+  periodEnd: string;
+  totalSales: string;
+  commission: string;
+  payoutAmount: string;
+  status: SettlementStatus;
+  createdAt: string;
+}
+
+export type CouponType = 'FIXED' | 'PERCENTAGE';
+
+/** 쿠폰 1건(발급 정의). */
+export interface Coupon {
+  id: string;
+  issuerType: 'ADMIN' | 'SELLER';
+  issuerId: string;
+  type: CouponType;
+  discountValue: string;
+  maxDiscountAmount: string | null;
+  minOrderAmount: string | null;
+  expiresAt: string;
+  totalQuantity: number | null;
+  issuedCount: number;
+  description: string | null;
+  createdAt: string;
+}
+
+/** POST /sellers/me/coupons — CreateCouponDto. discountValue 양수, PERCENTAGE 1~100(010). */
+export interface CreateCouponRequest {
+  type: CouponType;
+  discountValue: string;
+  maxDiscountAmount?: string;
+  minOrderAmount?: string;
+  expiresAt: string;
+  totalQuantity?: number;
+  description?: string;
+}
+
+/** POST /sellers/me/coupons/:id/issue — IssueCouponDto. */
+export interface IssueCouponRequest {
+  targetUserId: string;
+}
+
+/** 발급된 사용자 쿠폰. */
+export interface UserCoupon {
+  id: string;
+  couponId: string;
+  userId: string;
+  status: 'unused' | 'used';
+  usedOrderId: string | null;
+  createdAt: string;
+}

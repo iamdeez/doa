@@ -18,6 +18,9 @@ const NAV: NavItem[] = [
   { href: '/account/wishlist', label: '위시리스트', section: 'common' },
   { href: '/seller/products', label: '내 상품', section: 'seller' },
   { href: '/seller/orders', label: '주문·배송', section: 'seller' },
+  { href: '/seller/coupons', label: '쿠폰', section: 'seller' },
+  { href: '/seller/settlements', label: '정산', section: 'seller' },
+  { href: '/seller/stats', label: '판매 통계', section: 'seller' },
   { href: '/admin/sellers', label: '판매자 승인', section: 'admin' },
 ];
 
