@@ -1,3 +1,25 @@
+## [005-shipping-settlement] 구현 완료 (경량 모드)
+
+> 경량 모드: plan/design/test-cases/DIFF 문서 생략. 요구사항·수용 기준·구현 결과는 `005-shipping-settlement/spec/spec.md` 1장에 통합. 변경 라인은 git base `289b36f` 기준 `git diff 289b36f -- apps/backend`로 재생성.
+
+**변경 파일**:
+- `apps/backend/prisma/schema.prisma`: ShipmentStatus/SettlementStatus enum + Shipment·ShipmentTracking(orders 스키마), Settlement·SettlementItem(settlements 스키마) 추가. 금전 필드 `@db.Decimal(12,2)`.
+- `apps/backend/prisma/migrations/20260629080659_005_shipping_settlement/`: 마이그레이션(004 드리프트 테이블 함께 캡처 — 후속 주의사항 참조).
+- `apps/backend/src/modules/shipping/*`: repository·service·controller·module·events·dto + service.spec(신규 15). 송장 등록(preparing→shipped)·배송완료·추적조회(권한 3축).
+- `apps/backend/src/modules/settlement/*`: repository·service·controller·module·constants(COMMISSION_RATE=0.1)·dto + service.spec(신규 6). 정산 생성·본인/관리자 조회, Decimal 정확 계산.
+- `apps/backend/src/modules/order/order.service.ts`: 공개 메서드 추가(markShipped·markDelivered·getOrderOwnership·getCompletedItemsForSettlement) — additive, 기존 상태머신 정합.
+- `apps/backend/src/modules/order/order.repository.ts`: findCompletedItemsBySellerInPeriod 추가.
+- `apps/backend/test/static/{cross-schema,schema-decimal}.spec.ts`: 신규 repo 경계·정산 금전 필드 반영.
+
+**검증**: tsc 0 / unit 189 PASS(신규 21, 회귀 0) / static 47 PASS / AppModule 부팅 health e2e 3 PASS.
+
+**후속 작업 시 주의사항**:
+- **마이그레이션 드리프트**: 005 마이그레이션 SQL에 004(coupons·user_coupons·reviews) 테이블 생성이 함께 포함됨. 004 모델이 schema.prisma엔 있었으나 별도 마이그레이션이 없던 기존 드리프트가 `migrate dev`에서 캡처된 것. DB 정상 동기화 상태이나 백엔드 전체 완료 후 마이그레이션 히스토리 정리 검토 권장.
+- 정산 기간 필터가 주문 `createdAt` 기준(전용 `completedAt` 컬럼 부재). 정확한 정산 주기 산정 필요 시 컬럼 추가 검토.
+- OrderService에 정산·배송용 공개 메서드가 추가됨. 향후 주문 상태머신 변경 시 이 메서드들의 전이 정합성 재확인 필요.
+
+---
+
 ## [004-review-coupon] 구현 완료
 
 **변경 파일**:
