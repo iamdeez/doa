@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 
 import '../../core/providers.dart';
 import '../../theme/app_theme.dart';
+import '../checkout/checkout_screen.dart';
 
 final _won = NumberFormat('#,###', 'ko_KR');
 
@@ -43,7 +44,7 @@ class CartScreen extends ConsumerWidget {
                   itemBuilder: (_, i) => _CartRow(item: items[i], onChanged: () => ref.invalidate(cartProvider)),
                 ),
               ),
-              _Checkout(total: total),
+              _Checkout(total: total, items: items),
             ],
           );
         },
@@ -125,8 +126,9 @@ class _CartRow extends ConsumerWidget {
 }
 
 class _Checkout extends StatelessWidget {
-  const _Checkout({required this.total});
+  const _Checkout({required this.total, required this.items});
   final num total;
+  final List<Map<String, dynamic>> items;
   @override
   Widget build(BuildContext context) {
     return SafeArea(
@@ -149,8 +151,9 @@ class _Checkout extends StatelessWidget {
             ),
             const SizedBox(height: 12),
             ElevatedButton(
-              onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('배송지·결제(체크아웃)는 다음 단계에서 구현됩니다.')),
+              onPressed: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => CheckoutScreen(items: items)),
               ),
               child: const Text('주문하기'),
             ),
