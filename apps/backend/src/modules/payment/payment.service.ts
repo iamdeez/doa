@@ -49,8 +49,8 @@ export class PaymentService {
       return { paymentId: existing.id, status: existing.status };
     }
 
-    // 금액: order.totalAmount 기반 (외부 전달 불신)
-    const amount = new Prisma.Decimal(order.totalAmount.toString());
+    // 실결제 금액: totalAmount - discountAmount (FR-013, SEC-FIND-004: 외부 금액 입력 불신)
+    const amount = new Prisma.Decimal(order.totalAmount.toString()).minus(order.discountAmount);
 
     // PG 결제 요청 (트랜잭션 외부 — PG 호출은 롤백 불가)
     const chargeResult = await this.gateway.charge({ orderId, amount, idempotencyKey });

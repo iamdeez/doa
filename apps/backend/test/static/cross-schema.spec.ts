@@ -1,9 +1,12 @@
 /**
- * 정적 코드 검증 — SC-049/SC-050 [env:static]
+ * 정적 코드 검증 — SC-049/SC-050/SC-053/SC-054/SC-055 [env:static]
  *
  * 대상 SC:
  *   SC-049 (002-catalog, NFR-003 관련) — users/products 스키마 상호 참조 금지
  *   SC-050 (003-commerce, NFR-003 관련) — commerce/orders/payments 크로스 스키마 참조 금지
+ *   SC-053 (004-review-coupon) — CouponRepository: commerce 외 모델 직접 참조 금지
+ *   SC-054 (004-review-coupon) — ReviewRepository: commerce 외 모델 직접 참조 금지
+ *   SC-055 (004-review-coupon) — OrderRepository: 004 신규 commerce 모델(coupon/userCoupon/review) 직접 참조 금지
  *
  * 검증 방법: Node.js fs + 소스 텍스트 파싱
  *
@@ -60,9 +63,12 @@ const PRODUCTS_SCHEMA_MODELS = [
   'inventoryLog',
 ];
 
-// commerce 스키마 모델 (003-commerce: carts 테이블)
+// commerce 스키마 모델 (003-commerce: carts | 004-review-coupon: coupons, user_coupons, reviews)
 const COMMERCE_SCHEMA_MODELS = [
   'cart',
+  'coupon',
+  'userCoupon',
+  'review',
 ];
 
 // orders 스키마 모델 (003-commerce: orders, order_items, order_events 테이블)
@@ -142,6 +148,29 @@ const CROSS_SCHEMA_RULES: Array<{
     ],
     label: 'PaymentRepository (SC-050)',
   },
+  // ── 004-review-coupon 규칙 (SC-053, SC-054) ──
+  // CouponRepository: commerce 스키마만 접근 → products/users/orders/payments 금지 (SC-053)
+  {
+    file: 'src/modules/coupon/coupon.repository.ts',
+    forbiddenModels: [
+      ...PRODUCTS_SCHEMA_MODELS,
+      ...USERS_SCHEMA_MODELS,
+      ...ORDERS_SCHEMA_MODELS,
+      ...PAYMENTS_SCHEMA_MODELS,
+    ],
+    label: 'CouponRepository (SC-053)',
+  },
+  // ReviewRepository: commerce 스키마만 접근 → products/users/orders/payments 금지 (SC-054)
+  {
+    file: 'src/modules/review/review.repository.ts',
+    forbiddenModels: [
+      ...PRODUCTS_SCHEMA_MODELS,
+      ...USERS_SCHEMA_MODELS,
+      ...ORDERS_SCHEMA_MODELS,
+      ...PAYMENTS_SCHEMA_MODELS,
+    ],
+    label: 'ReviewRepository (SC-054)',
+  },
 ];
 
 /**
@@ -162,7 +191,7 @@ function buildCrossSchemaPattern(modelName: string): RegExp {
   );
 }
 
-describe('SC-049/SC-050: 크로스 스키마 Prisma 직접 참조 금지 정적 검증', () => {
+describe('SC-049/SC-050/SC-053/SC-054/SC-055: 크로스 스키마 Prisma 직접 참조 금지 정적 검증', () => {
   for (const rule of CROSS_SCHEMA_RULES) {
     it(`when_inspect_${rule.label.replace(/[^a-zA-Z0-9]/g, '_')}_then_no_cross_schema_prisma_access`, () => {
       /**

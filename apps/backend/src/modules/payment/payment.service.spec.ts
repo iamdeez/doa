@@ -1,7 +1,7 @@
 /**
  * PaymentService 단위 테스트 — [env:unit]
  *
- * 대상 SC: SC-033, SC-034, SC-035, SC-036, SC-038, SC-039, SC-040, SC-041, SC-052
+ * 대상 SC (003): SC-033~036, SC-038~041, SC-052 | (004): SC-022
  * SC-035 (Idempotency-Key 누락 400): controller-level 검증 — 본 spec에서 controller mock으로 커버.
  * SC-037 (markConfirmed): order.service.spec.ts 에서 검증.
  *
@@ -21,6 +21,7 @@ import {
   ForbiddenException,
 } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
+import { Prisma } from '@prisma/client';
 import { PaymentService } from './payment.service';
 import { PaymentRepository } from './payment.repository';
 import { OrderRepository } from '../order/order.repository';
@@ -362,6 +363,51 @@ describe('PaymentService', () => {
 
       // outbox 실패로 인해 tx 전체가 거부됨 검증
       // 실제 롤백은 integration에서 검증 (SC-052 category 2 uncoverable)
+    });
+  });
+
+  // ─────────────────────────────────────────────
+  // SC-022 (004): 쿠폰 할인 적용 — 실제 청구 금액 = totalAmount - discountAmount
+  // ─────────────────────────────────────────────
+  describe('SC-022 (004): pay — gateway.charge amount = totalAmount - discountAmount', () => {
+    it('when_discount_applied_then_charge_amount_is_net', async () => {
+      /**
+       * SC-022 (FR-010·FR-012 관련, 004 spec):
+       * 쿠폰이 적용된 주문의 결제 시:
+       *   gateway.charge 의 amount = totalAmount(60000) - discountAmount(10000) = 50000.
+       * discountAmount 는 order 생성 시 서버가 계산하여 저장 — payment 는 net amount 만 청구.
+       */
+      const discountedOrder = {
+        id: FIXED_ORDER_ID,
+        userId: FIXED_USER_ID,
+        status: 'pending',
+        totalAmount: '60000',
+        discountAmount: '10000',
+      };
+      mockOrderRepository.findById.mockResolvedValue(discountedOrder);
+      mockPaymentRepository.findByIdempotencyKey.mockResolvedValue(null);
+      mockPaymentGateway.charge.mockResolvedValue({
+        success: true,
+        pgTransactionId: 'pg-txn-coupon-001',
+      });
+      mockPaymentRepository.createPayment.mockResolvedValue({
+        id: FIXED_PAYMENT_ID,
+        status: 'completed',
+        amount: '50000',
+        orderId: FIXED_ORDER_ID,
+      });
+      mockPaymentRepository.createOutbox.mockResolvedValue(undefined);
+
+      await service.pay(FIXED_USER_ID, FIXED_ORDER_ID, FIXED_IDEMPOTENCY_KEY);
+
+      // charge 는 net amount (totalAmount - discountAmount) 로 호출되어야 함
+      const chargeCallArg = mockPaymentGateway.charge.mock.calls[0][0] as {
+        orderId: string;
+        amount: Prisma.Decimal;
+        idempotencyKey: string;
+      };
+      expect(chargeCallArg.amount.toString()).toBe('50000');
+      expect(chargeCallArg.orderId).toBe(FIXED_ORDER_ID);
     });
   });
 });

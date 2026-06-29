@@ -17,8 +17,9 @@
 - **현재 버전**: v1.0.0
 - **주요 기술 스택**: Node.js + TypeScript, NestJS, Prisma, PostgreSQL 16, Turborepo
 
-> 골격(`001`) + 카탈로그(`002`) + 거래(`003-commerce`) 완료. `apps/backend`(NestJS 18모듈 — auth·user·seller·product·inventory·**cart·order·payment 8개 실구현** + 10 스텁),
-> Prisma **19테이블**·JWT·AdminGuard·PrismaService ALS 트랜잭션·pg-boss(outbox·7일 자동확정)·Docker·CI 가 실재한다. (001 32/32, 002 101, 003 177 테스트 PASS.)
+> 001~004 완료. `apps/backend`(NestJS 18모듈 — auth·user·seller·product·inventory·cart·order·payment·**coupon·review 10개 실구현** + 8 스텁),
+> Prisma **22테이블**·JWT·AdminGuard·ALS 트랜잭션·pg-boss·쿠폰(서버할인·이중사용방지)·리뷰(orderItem)·Docker·CI 실재. (001 32, 002 101, 003 177, 004 212 PASS.)
+> **알려진 제약**: coupon `discountValue` 음수 검증 누락(SEC-001 Medium — 과다청구 가능, 후속 수정).
 
 ---
 

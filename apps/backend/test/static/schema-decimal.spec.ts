@@ -1,10 +1,12 @@
 /**
- * 정적 코드 검증 — SC-050/SC-049 [env:static]
+ * 정적 코드 검증 — SC-050/SC-049 (003) + SC-050 (004) [env:static]
  *
  * 대상 SC:
  *   SC-050 (002-catalog, NFR-004 관련) — price 필드 Decimal 타입 검증
  *   SC-049 (003-commerce, NFR-004 관련) — 금전 필드 (totalAmount, discountAmount,
  *           amount, unitPrice) Decimal 타입 검증
+ *   SC-050 (004-review-coupon, NFR-004 관련) — 쿠폰 금전 필드 (discountValue,
+ *           maxDiscountAmount, minOrderAmount) Decimal 타입 검증
  *
  * 검증 방법: Node.js fs + schema.prisma 텍스트 파싱
  *
@@ -18,6 +20,11 @@
  *   - discountAmount (003, Order.discountAmount)
  *   - amount (003, Payment.amount)
  *   - unitPrice (003, OrderItem.unitPrice)
+ *
+ * 대상 필드 (004-review-coupon 신규 추가):
+ *   - discountValue (004, Coupon.discountValue)
+ *   - maxDiscountAmount (004, Coupon.maxDiscountAmount)
+ *   - minOrderAmount (004, Coupon.minOrderAmount)
  *
  * 실행: 앱 기동·DB 연결 불필요. 파일 텍스트 검증만.
  */
@@ -47,6 +54,7 @@ function findSchemaFile(): string | null {
  *
  * SC-050 (002-catalog): price
  * SC-049 (003-commerce): totalAmount, discountAmount, amount, unitPrice
+ * SC-050 (004-review-coupon): discountValue, maxDiscountAmount, minOrderAmount
  */
 const MONEY_FIELDS: Array<{ fieldName: string; sc: string }> = [
   { fieldName: 'price', sc: 'SC-050(002)' },
@@ -54,6 +62,10 @@ const MONEY_FIELDS: Array<{ fieldName: string; sc: string }> = [
   { fieldName: 'discountAmount', sc: 'SC-049(003)' },
   { fieldName: 'amount', sc: 'SC-049(003)' },
   { fieldName: 'unitPrice', sc: 'SC-049(003)' },
+  // 004-review-coupon: 쿠폰 금전 필드 (SC-050)
+  { fieldName: 'discountValue', sc: 'SC-050(004)' },
+  { fieldName: 'maxDiscountAmount', sc: 'SC-050(004)' },
+  { fieldName: 'minOrderAmount', sc: 'SC-050(004)' },
 ];
 
 describe('SC-050/SC-049: 금전 필드 Decimal 타입 정적 검증', () => {

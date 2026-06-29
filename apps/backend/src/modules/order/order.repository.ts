@@ -1,5 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { ActorType, Order, OrderEvent, OrderItem, OrderStatus, Prisma } from '@prisma/client';
+// OrderItemWithOrder: review 모듈이 getOrderItemForReview DI 경유로 소비 (P-001 경계 준수)
+export type OrderItemWithOrder = OrderItem & { order: Order };
 import { PrismaService } from '../../shared/prisma/prisma.service';
 
 // P-001: orders 스키마(orders.orders, orders.order_items, orders.order_events)에만 접근.
@@ -125,6 +127,17 @@ export class OrderRepository {
         status: OrderStatus.delivered,
         deliveredAt: { lt: cutoff },
       },
+    });
+  }
+
+  /**
+   * orderItem + 상위 order 조회 — review 생성 시 completed 상태 검증 용도 (FR-021).
+   * P-001: orders 스키마 내 join — cross-schema 참조 없음.
+   */
+  async findOrderItemWithOrder(orderItemId: string): Promise<OrderItemWithOrder | null> {
+    return this.prisma.tx.orderItem.findUnique({
+      where: { id: orderItemId },
+      include: { order: true },
     });
   }
 }

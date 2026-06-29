@@ -30,6 +30,7 @@ export class OrderController {
     return this.orderService.createOrder(user.userId, {
       items: dto.items,
       shippingAddress: dto.shippingAddress,
+      userCouponId: dto.userCouponId,
     });
   }
 

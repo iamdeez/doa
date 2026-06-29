@@ -1,6 +1,7 @@
 import { forwardRef, Module } from '@nestjs/common';
 import { AuthSharedModule } from '../../shared/auth/auth-shared.module';
 import { CartModule } from '../cart/cart.module';
+import { CouponModule } from '../coupon/coupon.module';
 import { InventoryModule } from '../inventory/inventory.module';
 import { PaymentModule } from '../payment/payment.module';
 import { ProductModule } from '../product/product.module';
@@ -17,6 +18,7 @@ import { SellerOrderController } from './seller-order.controller';
     ProductModule,
     InventoryModule,
     CartModule,
+    CouponModule,
     // Order↔Payment 순환 참조 → forwardRef 해소 (ADR-007)
     forwardRef(() => PaymentModule),
   ],

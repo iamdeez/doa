@@ -1,9 +1,9 @@
 /**
  * OrderService 단위 테스트 — [env:unit]
  *
- * 대상 SC: SC-009~032, SC-037
+ * 대상 SC (003): SC-009~032, SC-037 | (004): SC-012, SC-019, SC-020, SC-021, SC-023
  * 검증 방법: Jest mock (OrderRepository, ProductService, InventoryService,
- *              CartService, PaymentService, SellerService, PrismaService)
+ *              CartService, PaymentService, SellerService, PrismaService, CouponService)
  * TDD Red: 구현 미완성 상태에서 작성된 테스트. import error 허용.
  *
  * Canonical 심볼 (tasks.md Test Authoring Contract):
@@ -33,6 +33,7 @@ import { CartService } from '../cart/cart.service';
 import { PaymentService } from '../payment/payment.service';
 import { SellerService } from '../seller/seller.service';
 import { PrismaService } from '../../shared/prisma/prisma.service';
+import { CouponService } from '../coupon/coupon.service';
 import { AUTO_CONFIRM_DAYS, DEFAULT_PAGE_LIMIT } from './order.constants';
 
 // ─────────────────────────────────────────────
@@ -78,6 +79,13 @@ const mockPrismaService = {
   runInTransaction: jest.fn().mockImplementation((fn: () => unknown) => fn()),
   onAfterCommit: jest.fn().mockImplementation((cb: () => unknown) => Promise.resolve(cb())),
   get tx() { return this; },
+};
+
+// T041 (004 spec): CouponService mock — §F provider 등록 + SC-012/019/020/021/023 테스트
+const mockCouponService = {
+  validateAndCalculateDiscount: jest.fn(),
+  markUsed: jest.fn(),
+  restoreForOrder: jest.fn(),
 };
 
 // ─────────────────────────────────────────────
@@ -159,6 +167,7 @@ describe('OrderService', () => {
         { provide: PaymentService, useValue: mockPaymentService },
         { provide: SellerService, useValue: mockSellerService },
         { provide: PrismaService, useValue: mockPrismaService },
+        { provide: CouponService, useValue: mockCouponService },
       ],
     }).compile();
 
@@ -797,6 +806,211 @@ describe('OrderService', () => {
 
       // 이미 confirmed → 상태 변경 없음
       expect(mockOrderRepository.updateStatus).not.toHaveBeenCalled();
+    });
+  });
+
+  // ─────────────────────────────────────────────
+  // SC-012 (004): 쿠폰 적용 주문 — 할인 금액 서버 계산
+  // ─────────────────────────────────────────────
+  describe('SC-012 (004): createOrder with coupon — 서버가 discountAmount 계산', () => {
+    it('when_userCouponId_provided_then_validate_and_markUsed_called', async () => {
+      /**
+       * SC-012 (FR-010 관련, 004 spec):
+       * createOrder 시 userCouponId 가 전달되면:
+       *   1. couponService.validateAndCalculateDiscount(userCouponId, userId, totalAmount) 호출 (pre-tx)
+       *   2. couponService.markUsed(ucId, couponId, orderId, userId, discountAmount) 호출 (tx 내부)
+       * discountAmount 는 서버 계산값 사용 — CreateOrderDto 에 discountAmount 없음 (SEC-FIND-004).
+       *
+       * PATCH-03: 쿠폰 적용 분기 — validate + markUsed 양쪽 모두 호출 검증
+       */
+      const singleItemSnapshot = new Map([
+        [FIXED_VARIANT_ID, FIXED_VARIANT_SNAPSHOTS.get(FIXED_VARIANT_ID)!],
+      ]);
+      mockProductService.getVariantSnapshots.mockResolvedValue(singleItemSnapshot);
+      mockInventoryService.checkAvailability.mockResolvedValue(true);
+      mockCouponService.validateAndCalculateDiscount.mockResolvedValue({
+        discountAmount: new Prisma.Decimal('5000'),
+        couponId: 'coupon-1',
+        userCouponId: 'uc-1',
+      });
+      mockCouponService.markUsed.mockResolvedValue(undefined);
+      mockOrderRepository.createOrder.mockResolvedValue({ id: FIXED_ORDER_ID, status: 'pending' });
+      mockOrderRepository.createItems.mockResolvedValue(undefined);
+      mockOrderRepository.appendEvent.mockResolvedValue(undefined);
+      mockInventoryService.decreaseStock.mockResolvedValue(undefined);
+      mockCartService.removeItems.mockResolvedValue(undefined);
+      mockOrderRepository.findById.mockResolvedValue({ ...FIXED_ORDER_PENDING });
+
+      await service.createOrder(FIXED_USER_ID, {
+        items: [{ variantId: FIXED_VARIANT_ID, quantity: 1 }],
+        shippingAddress: FIXED_SHIPPING_ADDRESS,
+        userCouponId: 'uc-1',
+      });
+
+      // validateAndCalculateDiscount: pre-tx 에서 쿠폰 검증 + 할인 계산
+      expect(mockCouponService.validateAndCalculateDiscount).toHaveBeenCalledWith(
+        'uc-1',
+        FIXED_USER_ID,
+        expect.any(Prisma.Decimal),
+      );
+      // markUsed: tx 내부에서 쿠폰 사용 처리
+      expect(mockCouponService.markUsed).toHaveBeenCalledWith(
+        'uc-1',
+        'coupon-1',
+        expect.any(String), // orderId (randomUUID)
+        FIXED_USER_ID,
+        expect.any(Prisma.Decimal),
+      );
+    });
+  });
+
+  // ─────────────────────────────────────────────
+  // SC-021 (004): 쿠폰 미입력 — 할인 없이 주문 생성
+  // ─────────────────────────────────────────────
+  describe('SC-021 (004): createOrder without coupon — discount=0, validate/markUsed 미호출', () => {
+    it('when_no_userCouponId_then_validate_and_markUsed_not_called', async () => {
+      /**
+       * SC-021 (FR-010 관련, 004 spec):
+       * userCouponId 없이 createOrder 호출 시:
+       *   1. validateAndCalculateDiscount 미호출
+       *   2. markUsed 미호출
+       *   3. discountAmount = 0 으로 주문 생성
+       *
+       * PATCH-03: 쿠폰 미입력 분기 — validate/markUsed 양쪽 모두 미호출 검증
+       */
+      const singleItemSnapshot = new Map([
+        [FIXED_VARIANT_ID, FIXED_VARIANT_SNAPSHOTS.get(FIXED_VARIANT_ID)!],
+      ]);
+      mockProductService.getVariantSnapshots.mockResolvedValue(singleItemSnapshot);
+      mockInventoryService.checkAvailability.mockResolvedValue(true);
+      mockOrderRepository.createOrder.mockResolvedValue({ id: FIXED_ORDER_ID, status: 'pending' });
+      mockOrderRepository.createItems.mockResolvedValue(undefined);
+      mockOrderRepository.appendEvent.mockResolvedValue(undefined);
+      mockInventoryService.decreaseStock.mockResolvedValue(undefined);
+      mockCartService.removeItems.mockResolvedValue(undefined);
+      mockOrderRepository.findById.mockResolvedValue({ ...FIXED_ORDER_PENDING });
+
+      // userCouponId 미전달
+      await service.createOrder(FIXED_USER_ID, {
+        items: [{ variantId: FIXED_VARIANT_ID, quantity: 1 }],
+        shippingAddress: FIXED_SHIPPING_ADDRESS,
+      });
+
+      // PATCH-03: 쿠폰 미입력 → 양 분기 모두 미호출
+      expect(mockCouponService.validateAndCalculateDiscount).not.toHaveBeenCalled();
+      expect(mockCouponService.markUsed).not.toHaveBeenCalled();
+    });
+  });
+
+  // ─────────────────────────────────────────────
+  // SC-019 (004): markUsed tx 내 호출 — pre-tx vs in-tx 순서 검증
+  // ─────────────────────────────────────────────
+  describe('SC-019 (004): validateAndCalculateDiscount pre-tx, markUsed in-tx 순서', () => {
+    it('when_coupon_applied_then_validate_called_before_tx', async () => {
+      /**
+       * SC-019 (FR-011·FR-013 관련, 004 spec):
+       * validateAndCalculateDiscount 는 runInTransaction 호출 이전(pre-tx)에 실행된다.
+       * markUsed 는 runInTransaction 내부(tx 내)에서 실행된다.
+       * → invocationCallOrder 비교로 실행 순서 단언.
+       */
+      const singleItemSnapshot = new Map([
+        [FIXED_VARIANT_ID, FIXED_VARIANT_SNAPSHOTS.get(FIXED_VARIANT_ID)!],
+      ]);
+      mockProductService.getVariantSnapshots.mockResolvedValue(singleItemSnapshot);
+      mockInventoryService.checkAvailability.mockResolvedValue(true);
+      mockCouponService.validateAndCalculateDiscount.mockResolvedValue({
+        discountAmount: new Prisma.Decimal('5000'),
+        couponId: 'coupon-1',
+        userCouponId: 'uc-1',
+      });
+      mockCouponService.markUsed.mockResolvedValue(undefined);
+      mockOrderRepository.createOrder.mockResolvedValue({ id: FIXED_ORDER_ID, status: 'pending' });
+      mockOrderRepository.createItems.mockResolvedValue(undefined);
+      mockOrderRepository.appendEvent.mockResolvedValue(undefined);
+      mockInventoryService.decreaseStock.mockResolvedValue(undefined);
+      mockCartService.removeItems.mockResolvedValue(undefined);
+      mockOrderRepository.findById.mockResolvedValue({ ...FIXED_ORDER_PENDING });
+
+      await service.createOrder(FIXED_USER_ID, {
+        items: [{ variantId: FIXED_VARIANT_ID, quantity: 1 }],
+        shippingAddress: FIXED_SHIPPING_ADDRESS,
+        userCouponId: 'uc-1',
+      });
+
+      // validateAndCalculateDiscount 는 runInTransaction 보다 먼저 호출되어야 함 (pre-tx)
+      const validateOrder =
+        mockCouponService.validateAndCalculateDiscount.mock.invocationCallOrder[0];
+      const txOrder = mockPrismaService.runInTransaction.mock.invocationCallOrder[0];
+      expect(validateOrder).toBeLessThan(txOrder);
+
+      // markUsed 는 반드시 호출되어야 함 (tx 내에서)
+      expect(mockCouponService.markUsed).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  // ─────────────────────────────────────────────
+  // SC-020 (004): markUsed 실패 — ConflictException 전파
+  // ─────────────────────────────────────────────
+  describe('SC-020 (004): markUsed 동시성 충돌 — ConflictException 전파', () => {
+    it('when_markUsed_throws_ConflictException_then_createOrder_rejects', async () => {
+      /**
+       * SC-020 (FR-013 관련, 004 spec, ADR-002):
+       * markUsed 내부에서 updateMany count=0 → ConflictException 발생 시
+       * createOrder 전체가 ConflictException 으로 reject 된다.
+       * (tx 내부 예외 → tx rollback, 주문 미생성)
+       */
+      const singleItemSnapshot = new Map([
+        [FIXED_VARIANT_ID, FIXED_VARIANT_SNAPSHOTS.get(FIXED_VARIANT_ID)!],
+      ]);
+      mockProductService.getVariantSnapshots.mockResolvedValue(singleItemSnapshot);
+      mockInventoryService.checkAvailability.mockResolvedValue(true);
+      mockCouponService.validateAndCalculateDiscount.mockResolvedValue({
+        discountAmount: new Prisma.Decimal('5000'),
+        couponId: 'coupon-1',
+        userCouponId: 'uc-1',
+      });
+      // markUsed: 이중사용 감지 → ConflictException
+      mockCouponService.markUsed.mockRejectedValue(
+        new ConflictException('Coupon already used (concurrent attempt)'),
+      );
+
+      await expect(
+        service.createOrder(FIXED_USER_ID, {
+          items: [{ variantId: FIXED_VARIANT_ID, quantity: 1 }],
+          shippingAddress: FIXED_SHIPPING_ADDRESS,
+          userCouponId: 'uc-1',
+        }),
+      ).rejects.toThrow(ConflictException);
+
+      // 주문 미생성 확인
+      expect(mockOrderRepository.createOrder).not.toHaveBeenCalled();
+    });
+  });
+
+  // ─────────────────────────────────────────────
+  // SC-023 (004): 주문 취소 시 쿠폰 복원
+  // ─────────────────────────────────────────────
+  describe('SC-023 (004): cancel — couponService.restoreForOrder 호출', () => {
+    it('when_cancel_then_restoreForOrder_called_with_orderId', async () => {
+      /**
+       * SC-023 (FR-016 관련, 004 spec):
+       * 주문 취소(cancel) 시 couponService.restoreForOrder(orderId) 가 호출된다.
+       * 쿠폰이 없었던 주문의 경우 restoreForOrder 는 updateMany count=0 으로 no-op.
+       * production cancel 은 runInTransaction 내: refund? → restoreForOrder → restoreStock → updateStatus
+       */
+      mockOrderRepository.findById.mockResolvedValue({
+        ...FIXED_ORDER_PENDING,
+        status: 'pending',
+      });
+      mockPaymentService.findPaymentByOrderId.mockResolvedValue(null); // 결제 없음 → 환불 불필요
+      mockCouponService.restoreForOrder.mockResolvedValue(undefined);
+      mockInventoryService.restoreStock.mockResolvedValue(undefined);
+      mockOrderRepository.updateStatus.mockResolvedValue(undefined);
+      mockOrderRepository.appendEvent.mockResolvedValue(undefined);
+
+      await service.cancel(FIXED_USER_ID, FIXED_ORDER_ID);
+
+      expect(mockCouponService.restoreForOrder).toHaveBeenCalledWith(FIXED_ORDER_ID);
     });
   });
 });

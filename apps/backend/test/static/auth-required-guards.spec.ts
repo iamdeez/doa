@@ -1,16 +1,17 @@
 /**
- * 정적 코드 검증 — SC-048 / SC-007 [env:static]
+ * 정적 코드 검증 — SC-048 / SC-007 / SC-052 [env:static]
  *
  * 대상 SC:
  *   SC-048 (002-catalog, NFR-002 관련) — 인증 필수 엔드포인트 JwtAuthGuard 검증
  *   SC-007 (003-commerce, FR-007 관련) — cart/order/payment 컨트롤러 JWT 인증 필수
+ *   SC-052 (004-review-coupon, NFR-003 관련) — coupon·review 컨트롤러 JWT 인증 필수
  *
  * 검증 방법:
  *   (1) 컨트롤러 소스 텍스트 파싱: @UseGuards(JwtAuthGuard) 데코레이터 존재 확인
  *   (2) 인증 불필요 엔드포인트에 @Public() 또는 guard 제외 패턴 확인
  *
  * 검증 내용:
- *   NFR-002: 인증이 필요한 모든 엔드포인트는 유효하지 않거나 없는 JWT 토큰으로
+ *   NFR-002/NFR-003: 인증이 필요한 모든 엔드포인트는 유효하지 않거나 없는 JWT 토큰으로
  *   요청 시 401 반환.
  *
  *   인증 필수 컨트롤러 목록:
@@ -26,13 +27,19 @@
  *   - PaymentController (POST /payments 등)
  *   - SellerOrderController (PATCH /orders/:id/confirm-by-seller 등)
  *
+ *   004-review-coupon (SC-052):
+ *   - coupon.controller.ts — AdminCouponController, SellerCouponController, UserCouponController
+ *   - review.controller.ts — ReviewController (쓰기/수정/삭제)
+ *     (ProductReviewController GET /products/:productId/reviews 는 공개 열람 — 비인증 허용)
+ *
  *   인증 불필요 엔드포인트:
  *   - GET /categories → CategoryController
  *   - GET /products → ProductController (열람)
  *   - GET /products/:id → ProductController (열람)
+ *   - GET /products/:productId/reviews → ProductReviewController (공개 열람)
  *
  * [env:static] 보완:
- *   이 정적 검증은 SC-002/SC-007 guard 동작 단위 테스트를 보완하는 정적 검증이다.
+ *   이 정적 검증은 SC-002/SC-007/SC-052 guard 동작 단위 테스트를 보완하는 정적 검증이다.
  *   단위 테스트로 충분히 커버되므로 중복 단언을 최소화.
  */
 
@@ -52,6 +59,12 @@ const AUTH_REQUIRED_CONTROLLERS = [
   'src/modules/order/order.controller.ts',
   'src/modules/payment/payment.controller.ts',
   'src/modules/order/seller-order.controller.ts',
+  // ── 004-review-coupon (SC-052) ──
+  // coupon.controller.ts 단일 파일에 3 컨트롤러 모두 JwtAuthGuard 적용됨
+  'src/modules/coupon/coupon.controller.ts',
+  // review.controller.ts 의 ReviewController(쓰기) 는 JwtAuthGuard 적용
+  // (ProductReviewController 공개 열람은 guard 미적용 — 이 목록 외)
+  'src/modules/review/review.controller.ts',
 ];
 
 // 전역 가드 설정 파일 (main.ts 또는 app.module.ts) — AppGuard / JwtAuthGuard 전역 등록 확인
@@ -60,16 +73,17 @@ const APP_ENTRY_CANDIDATES = [
   'src/app.module.ts',
 ];
 
-describe('SC-048/SC-007: 인증 필수 엔드포인트 JwtAuthGuard 정적 검증', () => {
+describe('SC-048/SC-007/SC-052: 인증 필수 엔드포인트 JwtAuthGuard 정적 검증', () => {
   it('when_inspect_auth_controllers_then_jwt_guard_applied', () => {
     /**
-     * SC-048 (002-catalog, NFR-002 관련) / SC-007 (003-commerce, FR-007 관련):
+     * SC-048 (002-catalog, NFR-002 관련) / SC-007 (003-commerce, FR-007 관련) /
+     * SC-052 (004-review-coupon, NFR-003 관련):
      * 인증 필수 컨트롤러에 JwtAuthGuard 가 적용되어 있어야 한다.
      * @UseGuards(JwtAuthGuard) 또는 전역 가드 방식 중 하나.
      *
-     * 003-commerce 컨트롤러 (SC-007 추가):
-     *   cart.controller.ts, order.controller.ts, payment.controller.ts,
-     *   seller-order.controller.ts
+     * 004-review-coupon 컨트롤러 (SC-052 추가):
+     *   coupon.controller.ts (AdminCouponController·SellerCouponController·UserCouponController),
+     *   review.controller.ts (ReviewController)
      *
      * 전략:
      *   컨트롤러 소스에 'JwtAuthGuard' 문자열이 포함되어 있거나,

@@ -1,3 +1,58 @@
+## [004-review-coupon] 구현 완료
+
+**변경 파일**:
+
+### Prisma 스키마
+
+- `apps/backend/prisma/schema.prisma`: commerce 스키마에 3개 enum(CouponIssuerType·CouponType·UserCouponStatus) + 3개 테이블(coupons·user_coupons·reviews) 신규 정의. Coupon(Decimal 금전 필드·issuedCount·totalQuantity), UserCoupon(status·usedOrderId), Review(orderItemId @unique·productId·sellerId·rating·content) 모델. 복합 인덱스(productId+createdAt, userId+createdAt, userId+status, usedOrderId) 추가.
+
+### coupon 모듈 (스텁 → 실구현)
+
+- `apps/backend/src/modules/coupon/coupon.repository.ts`: CouponRepository 실구현. createCoupon·findCouponById·incrementIssuedCountConditional($executeRaw 조건부 increment — issuedCount < totalQuantity)·createUserCoupon·findUserCouponWithCoupon·listUserCoupons·listCouponsByIssuer·markUserCouponUsed(updateMany WHERE status='unused' → count 반환)·restoreUserCouponsByOrder. P-001: commerce 스키마(coupons·user_coupons) 전용.
+- `apps/backend/src/modules/coupon/coupon.service.ts`: CouponService 실구현. createCoupon(관리자)·createSellerCoupon(APPROVED 판매자)·issueByAdmin·issueBySeller(소유권 검증)·listMyCoupons·listSellerCoupons·listAdminCoupons·validateAndCalculateDiscount(pre-tx: FR-011 4조건 검증 + FR-012 Decimal 할인 계산)·markUsed(tx 내: 조건부 UPDATE count=0→409, onAfterCommit coupon.used 이벤트)·restoreForOrder(취소 시 쿠폰 복원). SellerService·PrismaService·EventEmitter2 DI.
+- `apps/backend/src/modules/coupon/coupon.controller.ts`: AdminCouponController(POST/GET /admin/coupons, POST /admin/coupons/:id/issue — JwtAuthGuard+AdminGuard)·SellerCouponController(POST/GET /sellers/me/coupons, POST /sellers/me/coupons/:id/issue — JwtAuthGuard)·UserCouponController(GET /users/me/coupons — JwtAuthGuard) 구현.
+- `apps/backend/src/modules/coupon/coupon.events.ts`: CouponUsedPayload 인터페이스 정의 (5개 필드: userCouponId·couponId·orderId·userId·discountAmount).
+- `apps/backend/src/modules/coupon/coupon.module.ts`: AdminCouponController·SellerCouponController·UserCouponController 등록. SellerModule 의존. CouponService export.
+
+### review 모듈 (스텁 → 실구현)
+
+- `apps/backend/src/modules/review/review.repository.ts`: ReviewRepository 실구현. createReview·findReviewById·updateReview·deleteReview·listByProduct(productId cursor 페이지네이션)·listByUser(userId cursor 페이지네이션). P-001: commerce 스키마(reviews) 전용.
+- `apps/backend/src/modules/review/review.service.ts`: ReviewService 실구현. createReview(getOrderItemForReview DI→소유권/completed 검증→P2002→409)·updateReview·deleteReview·listProductReviews·listMyReviews. review.created 이벤트 emit (6개 필드). OrderService·EventEmitter2 DI.
+- `apps/backend/src/modules/review/review.controller.ts`: ReviewController(POST /reviews, PATCH/DELETE /reviews/:id, GET /reviews/me — JwtAuthGuard)·ProductReviewController(GET /products/:productId/reviews — 인증 불필요) 구현.
+- `apps/backend/src/modules/review/review.events.ts`: ReviewCreatedPayload 인터페이스 정의 (6개 필드: reviewId·orderItemId·orderId·productId·userId·rating).
+- `apps/backend/src/modules/review/review.module.ts`: ReviewController·ProductReviewController 등록. OrderModule 의존.
+
+### order 모듈 (쿠폰 연동 보정)
+
+- `apps/backend/src/modules/order/dto/create-order.dto.ts`: 선택적 `userCouponId?: string` 필드 추가 (FR-010, SEC-FIND-004: discountAmount 직접 지정 금지 원칙 유지).
+- `apps/backend/src/modules/order/order.service.ts`: createOrder에 쿠폰 검증·할인 계산(pre-tx validateAndCalculateDiscount) + tx 내 markUsed 분기 추가. cancel에 restoreForOrder 호출 추가(FR-016). getOrderItemForReview 신규 공개 메서드 추가(review 모듈 DI용). CouponService 생성자 주입.
+- `apps/backend/src/modules/order/order.repository.ts`: findOrderItemWithOrder(orderItemId) 신규 메서드 추가 — review 권한 검증용 OrderItem+Order join. OrderItemWithOrder 타입 export.
+- `apps/backend/src/modules/order/order.controller.ts`: createOrder 핸들러에 userCouponId 전달.
+- `apps/backend/src/modules/order/order.module.ts`: CouponModule import 추가.
+
+### payment 모듈 (할인 적용 보정)
+
+- `apps/backend/src/modules/payment/payment.service.ts`: pay 메서드 청구 금액을 `totalAmount - discountAmount` 로 변경 (FR-015, SEC-FIND-004). discountAmount=0 주문은 동작 동일(003 회귀 없음).
+
+### 테스트
+
+- `apps/backend/src/modules/order/order.service.spec.ts`: SC-012·SC-019·SC-020·SC-021·SC-023 (004 쿠폰 연동) 테스트 추가. CouponService mock 등록.
+- `apps/backend/src/modules/payment/payment.service.spec.ts`: SC-022 (할인 적용 시 net charge 검증) 테스트 추가.
+- `apps/backend/test/static/auth-required-guards.spec.ts`: SC-052 (coupon·review 컨트롤러 JwtAuthGuard) 정적 검증 추가.
+- `apps/backend/test/static/cross-schema.spec.ts`: SC-053·SC-054 (CouponRepository·ReviewRepository 크로스 스키마 금지) 정적 검증 추가.
+- `apps/backend/test/static/schema-decimal.spec.ts`: SC-050(004) (쿠폰 금전 필드 discountValue·maxDiscountAmount·minOrderAmount Decimal) 정적 검증 추가.
+
+**후속 작업 시 주의사항**:
+
+- `CouponService.validateAndCalculateDiscount`는 트랜잭션 외부(pre-tx)에서 호출해야 한다. tx 내부에서 호출하면 `this.prisma.tx`가 아직 열리지 않은 상태에서 중첩 BEGIN 시도 위험.
+- `CouponService.markUsed`는 `PrismaService.runInTransaction` 내부에서 호출해야 한다. 주문 생성 트랜잭션과 동일 ALS 컨텍스트 내 실행이 이중사용 방지(NFR-002)의 핵심.
+- `OrderService.getOrderItemForReview`는 review 모듈이 cross-schema 직접 접근 없이 orderItem 정보를 얻는 유일한 DI 경로다. 이 메서드를 bypass하는 구현은 P-001 위반.
+- `payment.service.ts` pay 메서드의 청구 금액이 `totalAmount - discountAmount`로 변경됨. discountAmount=0인 기존 주문은 영향 없으나, 쿠폰 없는 주문의 discountAmount가 Decimal(0)임을 보장해야 한다.
+- SC-034 (rating=0/6 → 400): 미테스트 GAP 잔존. DTO `@IsInt @Min(1) @Max(5)` 검증은 구현되어 있으며 ValidationPipe에 의한 동작은 보장되나, 해당 케이스 단위 테스트가 작성되지 않음. 후속 spec에서 추가 권장.
+- context.md / infra.md 갱신 필요 (gaps.md GAP-002 참조 — Retrospective Agent 처리 위임).
+
+---
+
 ## [003-commerce] 구현 완료
 
 **변경 파일**:

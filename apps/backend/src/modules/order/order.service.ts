@@ -15,8 +15,9 @@ import { InventoryService } from '../inventory/inventory.service';
 import { ProductService } from '../product/product.service';
 import { SellerService } from '../seller/seller.service';
 import { PaymentService } from '../payment/payment.service';
+import { CouponService } from '../coupon/coupon.service';
 import { AUTO_CONFIRM_DAYS, DEFAULT_PAGE_LIMIT, MAX_PAGE_LIMIT } from './order.constants';
-import { OrderRepository, OrderWithDetails } from './order.repository';
+import { OrderRepository, OrderWithDetails, OrderItemWithOrder } from './order.repository';
 
 @Injectable()
 export class OrderService {
@@ -29,6 +30,7 @@ export class OrderService {
     private readonly sellerService: SellerService,
     @Inject(forwardRef(() => PaymentService))
     private readonly paymentService: PaymentService,
+    private readonly couponService: CouponService,
   ) {}
 
   // ── 주문 생성 (T031) ───────────────────────────────────────────────
@@ -42,11 +44,10 @@ export class OrderService {
     dto: {
       items: Array<{ variantId: string; quantity: number }>;
       shippingAddress: object;
+      userCouponId?: string;
     },
   ): Promise<OrderWithDetails> {
-    const { items, shippingAddress } = dto;
-    // discountAmount 는 쿠폰 미구현으로 항상 0 고정 (SEC-FIND-004)
-    const discountAmount = new Prisma.Decimal(0);
+    const { items, shippingAddress, userCouponId } = dto;
 
     // 가용 재고 사전 확인 (트랜잭션 외부 — non-atomic, fast-path check)
     for (const item of items) {
@@ -74,8 +75,32 @@ export class OrderService {
       return acc.add(snap.unitPrice.mul(item.quantity));
     }, new Prisma.Decimal(0));
 
+    // 쿠폰 검증·할인 계산 (트랜잭션 외부 pre-tx — 상태 변경 없음, FR-011·FR-012)
+    let discountAmount = new Prisma.Decimal(0);
+    let couponMeta: { userCouponId: string; couponId: string } | null = null;
+    if (userCouponId) {
+      const result = await this.couponService.validateAndCalculateDiscount(
+        userCouponId,
+        userId,
+        totalAmount,
+      );
+      discountAmount = result.discountAmount;
+      couponMeta = { userCouponId: result.userCouponId, couponId: result.couponId };
+    }
+
     await this.prisma.runInTransaction(async () => {
-      // 1. 재고 차감 (원자적 — conditionalDecrement)
+      // 1. 쿠폰 이중사용 방지 조건부 UPDATE (트랜잭션 내부, ADR-002, FR-013)
+      if (couponMeta) {
+        await this.couponService.markUsed(
+          couponMeta.userCouponId,
+          couponMeta.couponId,
+          orderId,
+          userId,
+          discountAmount,
+        );
+      }
+
+      // 2. 재고 차감 (원자적 — conditionalDecrement)
       for (const item of items) {
         await this.inventoryService.decreaseStock(
           item.variantId,
@@ -84,7 +109,7 @@ export class OrderService {
         );
       }
 
-      // 2. 주문 생성
+      // 3. 주문 생성
       await this.orderRepository.createOrder({
         id: orderId,
         userId,
@@ -93,7 +118,7 @@ export class OrderService {
         shippingAddressSnapshot: shippingAddress,
       });
 
-      // 3. 주문 항목 생성
+      // 4. 주문 항목 생성
       const orderItems = items.map((item) => {
         const snap = snapshotMap.get(item.variantId)!;
         return {
@@ -111,7 +136,7 @@ export class OrderService {
       });
       await this.orderRepository.createItems(orderItems);
 
-      // 4. 주문 이벤트 기록
+      // 5. 주문 이벤트 기록
       await this.orderRepository.appendEvent({
         orderId,
         fromStatus: null,
@@ -120,7 +145,7 @@ export class OrderService {
         actorId: userId,
       });
 
-      // 5. 장바구니에서 주문된 항목 제거 (동일 트랜잭션 내)
+      // 6. 장바구니에서 주문된 항목 제거 (동일 트랜잭션 내)
       await this.cartService.removeItems(userId, items.map((i) => i.variantId));
     });
 
@@ -170,6 +195,9 @@ export class OrderService {
       if (payment && payment.status === PaymentStatus.completed) {
         await this.paymentService.refund(payment.id, `refund:${orderId}`);
       }
+
+      // 쿠폰 복원 (FR-016) — 주문에 쿠폰이 없었으면 updateMany count=0 으로 no-op
+      await this.couponService.restoreForOrder(orderId);
 
       // 재고 복원
       for (const item of order.items) {
@@ -251,6 +279,16 @@ export class OrderService {
       actorType: ActorType.CUSTOMER,
       actorId: userId,
     });
+  }
+
+  // ── 리뷰 연동 (T022) ──────────────────────────────────────────────────
+
+  /**
+   * orderItemId 로 OrderItem + 상위 Order 조회.
+   * ReviewService 가 DI 경유로 소비 (P-001: cross-schema 직접 접근 금지).
+   */
+  async getOrderItemForReview(orderItemId: string): Promise<OrderItemWithOrder | null> {
+    return this.orderRepository.findOrderItemWithOrder(orderItemId);
   }
 
   /**

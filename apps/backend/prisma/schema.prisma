@@ -259,6 +259,114 @@ model Cart {
 }
 
 // ============================================================
+// commerce 스키마 — 004-review-coupon 확장 테이블
+// ============================================================
+
+/// 쿠폰 발급자 유형. ADMIN: 관리자 전체 발급, SELLER: 판매자 대상 발급 (FR-001·FR-002, ADR-010)
+enum CouponIssuerType {
+  ADMIN
+  SELLER
+
+  @@schema("commerce")
+}
+
+/// 쿠폰 할인 유형. FIXED: 정액 할인, PERCENTAGE: 비율 할인 1~100% (FR-001, ADR-005)
+enum CouponType {
+  FIXED
+  PERCENTAGE
+
+  @@schema("commerce")
+}
+
+/// user_coupon 상태. unused → used (조건부 UPDATE WHERE unused, ADR-002) | expired (만료 조회용)
+enum UserCouponStatus {
+  unused
+  used
+  expired
+
+  @@schema("commerce")
+}
+
+/// 쿠폰 마스터. 관리자·판매자가 생성하는 쿠폰 정의 레코드 (FR-001·FR-002).
+/// 금전 필드(discountValue·maxDiscountAmount·minOrderAmount) Decimal(12,2) 전용 (P-005·NFR-001).
+model Coupon {
+  id                String           @id @default(cuid())
+  issuerType        CouponIssuerType
+  /// cross-schema plain String — ADMIN: admin userId, SELLER: users.sellers.id (P-001 경계)
+  issuerId          String
+  type              CouponType
+  /// 금전 필드 — 부동소수점 금지 (P-005, NFR-001). FIXED: 할인 금액(원), PERCENTAGE: 할인율(정수 1~100)
+  discountValue     Decimal          @db.Decimal(12, 2)
+  /// 금전 필드 — PERCENTAGE 전용 최대 할인 금액 상한 (P-005). FIXED 쿠폰에는 미사용 (ADR-005)
+  maxDiscountAmount Decimal?         @db.Decimal(12, 2)
+  /// 금전 필드 — 최소 주문 금액 조건 (P-005). null이면 조건 없음
+  minOrderAmount    Decimal?         @db.Decimal(12, 2)
+  expiresAt         DateTime
+  totalQuantity     Int?
+  /// 발급 건수 누적 카운터. 한도 가드는 $executeRaw 조건부 increment 전용 (ADR-004).
+  /// Prisma updateMany WHERE 절이 컬럼-컬럼 비교(issuedCount < totalQuantity) 미지원이므로 raw SQL 필수
+  issuedCount       Int              @default(0)
+  description       String?
+  createdAt         DateTime         @default(now())
+  userCoupons       UserCoupon[]
+
+  /// 판매자 쿠폰 목록 조회 (FR-006: GET /sellers/me/coupons) + 발급자 소유권 검증 (FR-004·FR-009)
+  @@index([issuerType, issuerId])
+  @@map("coupons")
+  @@schema("commerce")
+}
+
+/// 고객에게 발급된 쿠폰 인스턴스. 쿠폰 마스터(Coupon) 와 1:N 관계.
+/// 이중 사용 방지: updateMany({where:{id, status:'unused'}}).count === 0 → 409 (ADR-002·FR-013)
+model UserCoupon {
+  id          String           @id @default(cuid())
+  couponId    String
+  /// cross-schema plain String — users.users.id (P-001 경계)
+  userId      String
+  status      UserCouponStatus @default(unused)
+  /// cross-schema plain String — orders.orders.id. 복원 조회용 (FR-016, P-001 경계)
+  usedOrderId String?
+  createdAt   DateTime         @default(now())
+  coupon      Coupon           @relation(fields: [couponId], references: [id], onDelete: Cascade)
+
+  /// 내 쿠폰 목록 조회 + status 필터 (FR-005: GET /users/me/coupons?status=...)
+  @@index([userId, status])
+  /// 주문 취소 시 쿠폰 복원 조회 (FR-016: WHERE usedOrderId=orderId)
+  @@index([usedOrderId])
+  @@map("user_coupons")
+  @@schema("commerce")
+}
+
+/// 구매 완료 주문의 orderItem 단위 리뷰.
+/// orderItemId @unique: 1 orderItem 1 리뷰 DB 수준 보장 (ADR-009·FR-021c). 중복 insert → P2002 → 409
+model Review {
+  id          String   @id @default(cuid())
+  /// cross-schema plain String — orders.order_items.id (P-001 경계).
+  /// @unique 으로 1 orderItem 1 리뷰 DB 제약 보장 (FR-021c, ADR-009)
+  orderItemId String   @unique
+  /// cross-schema plain String — orders.orders.id (P-001 경계)
+  orderId     String
+  /// cross-schema plain String — users.users.id (P-001 경계)
+  userId      String
+  /// cross-schema plain String — products.products.id. 상품별 리뷰 조회용 (FR-025, P-001 경계)
+  productId   String
+  /// cross-schema plain String — users.sellers.id (P-001 경계)
+  sellerId    String
+  /// 평점 1~5. DTO @IsInt @Min(1) @Max(5) 앱 레벨 검증 (FR-022·SC-034). Prisma DB CHECK 미지원
+  rating      Int
+  content     String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  /// 상품별 리뷰 cursor 페이지네이션 최신순 (FR-025: GET /products/:productId/reviews)
+  @@index([productId, createdAt(sort: Desc), id(sort: Desc)])
+  /// 내 리뷰 cursor 페이지네이션 (FR-026: GET /reviews/me)
+  @@index([userId, createdAt(sort: Desc), id(sort: Desc)])
+  @@map("reviews")
+  @@schema("commerce")
+}
+
+// ============================================================
 // orders 스키마 — 003-commerce 실체화 테이블
 // ============================================================
 
