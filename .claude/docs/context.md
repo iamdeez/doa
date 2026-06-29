@@ -17,9 +17,10 @@
 - **현재 버전**: v1.0.0
 - **주요 기술 스택**: Node.js + TypeScript, NestJS, Prisma, PostgreSQL 16, Turborepo
 
-> 001~004 완료. `apps/backend`(NestJS 18모듈 — auth·user·seller·product·inventory·cart·order·payment·**coupon·review 10개 실구현** + 8 스텁),
-> Prisma **22테이블**·JWT·AdminGuard·ALS 트랜잭션·pg-boss·쿠폰(서버할인·이중사용방지)·리뷰(orderItem)·Docker·CI 실재. (001 32, 002 101, 003 177, 004 212 PASS.)
-> **알려진 제약**: coupon `discountValue` 음수 검증 누락(SEC-001 Medium — 과다청구 가능, 후속 수정).
+> 001~007 완료. `apps/backend`(NestJS **18모듈 전부 실구현** — auth·user·seller·product·inventory·cart·order·payment·coupon·review·shipping·settlement·search·notification·file·banner·stats·admin),
+> Prisma **29테이블**·JWT·AdminGuard·ALS 트랜잭션·pg-boss·쿠폰(서버할인·이중사용방지)·리뷰(orderItem)·배송(송장·추적·상태전이)·정산(Decimal 집계)·검색·알림·파일(R2 Port+stub)·배너·통계·운영·Docker·CI 실재.
+> 단위/통합 테스트: unit 229 PASS(24 suites) + e2e/static 84 PASS(16 suites). (005~007 경량 모드 구현 후 정식 검증·문서화 완료.)
+> **알려진 제약**: coupon `discountValue` 음수 검증 누락(SEC-001 Medium). 정산 중복집계 미차단(SEC-FIND-005-01 Medium). file 메타 소유권 미검증·presign 입력 무검증(SEC-FIND-006-01/02 Low). 알림 이벤트 미연동(GAP-006-01). 상세 §6.
 
 ---
 
@@ -36,7 +37,7 @@ doa-next/                      Turborepo 모노레포 루트
 │   ├── backend/               NestJS 모듈러 모놀리스 (실구현)
 │   │   ├── src/health/        헬스체크 (GET /health)
 │   │   ├── src/shared/        auth(JwtStrategy·JwtAuthGuard·@CurrentUser)·config(jwt)·prisma(PrismaService)
-│   │   ├── src/modules/       18개 NestJS 도메인 모듈 (auth 실구현 + 17 스텁)
+│   │   ├── src/modules/       18개 NestJS 도메인 모듈 (전부 실구현)
 │   │   ├── prisma/            schema.prisma (multiSchema) + migrations
 │   │   └── Dockerfile         멀티스테이지 + HEALTHCHECK (fly.toml 은 Stage 2+)
 │   ├── console/               Next.js seller·admin 웹 (스캐폴드만 — Stage 4 init)
@@ -82,17 +83,16 @@ Events (발행/구독 — NestJS EventEmitter)
 | `payment` | `payments` | 결제·환불 (PG 연동) |
 | `shipping` | `orders` | 배송·송장·배송추적 |
 | `settlement` | `settlements` | 판매자 정산 |
-| `search` | `products` | 상품 검색 인덱싱·질의 (PostgreSQL tsvector/pg_trgm) |
-| `notification` | `admin` | 알림 (이메일/푸시/인앱) |
-| `file` | `files` | 파일 업로드·메타데이터 (Cloudflare R2) |
-| `banner` | `admin` | 배너·프로모션 노출 |
-| `stats` | `admin` | 집계·통계·대시보드 |
-| `admin` | `admin` | 공지·시스템 설정·운영 |
+| `search` | (자체 테이블 없음) | 상품 검색 질의 — `ProductService` DI 경유 read-only (offset 페이지네이션·키워드·가격·정렬) |
+| `notification` | `users` | 인앱 알림 (notifications 테이블). `create()` 공개 진입점 — 이벤트 연동은 후속(GAP-006-01) |
+| `file` | `files` | 파일 메타데이터·presign (file_assets). R2는 `FileStoragePort` + `StubFileStorage`(무네트워크) |
+| `banner` | `admin` | 배너 노출 (banners 테이블) — 관리자 CRUD + 공개 노출(활성·기간 필터) |
+| `stats` | (자체 테이블 없음) | 집계·통계 — order/user/seller Service 공개 메서드 DI 조합 (매출 Decimal) |
+| `admin` | (자체 테이블 없음) | 운영 — 판매자 승인 대기/승인(기존 SellerService.approve 재사용)·사용자 목록 |
 
-> **구현 상태**: `auth`·`user`·`seller`·`product`·`inventory`·`cart`·`order`·`payment` **8개 실구현**. 나머지 10개(coupon·review·shipping·settlement·search·notification·file·banner·stats·admin)는
-> 4계층 빈 스텁(골격만 — Stage 3+ 대상).
+> **구현 상태**: **18개 모듈 전부 실구현**(001~007). search·stats·admin 은 자체 트랜잭션 테이블 없이 타 도메인 Service 공개 메서드를 DI 경유로 조합하는 read-only/오케스트레이션 모듈이다(P-001 — repository 빈 클래스 또는 자기 스키마 집계만).
 >
-> **인프라(`src/infrastructure/pgboss/`)**: PgBossModule · OutboxRelay(payment_outbox → pg-boss relay) · AutoConfirmJob(배송완료 7일 후 자동 구매확정). `shared/prisma/PrismaService` 는 ALS(AsyncLocalStorage) tx-aware 확장(`runInTransaction`/`tx`/`onAfterCommit`) — cross-schema 단일 `$transaction` 참여. 결제: `PaymentGatewayPort` + stub(실 PG 후속), Idempotency-Key 멱등.
+> **인프라(`src/infrastructure/pgboss/`)**: PgBossModule · OutboxRelay(payment_outbox → pg-boss relay) · AutoConfirmJob(배송완료 7일 후 자동 구매확정). `shared/prisma/PrismaService` 는 ALS(AsyncLocalStorage) tx-aware 확장(`runInTransaction`/`tx`/`onAfterCommit`) — cross-schema 단일 `$transaction` 참여. 결제: `PaymentGatewayPort` + stub(실 PG 후속), Idempotency-Key 멱등. 파일: `FileStoragePort` + `StubFileStorage`(실 R2 후속).
 
 ### 공통(shared)·인프라 모듈 (실구현)
 
@@ -162,7 +162,7 @@ completed → refund_pending → refunded
 
 | 시스템 | 연동 방식 | 담당 모듈 | 주의사항 |
 |---|---|---|---|
-| Cloudflare R2 | S3 호환 SDK (`@aws-sdk/client-s3` + R2 엔드포인트) | `file` | AWS SDK 사용하되 R2 엔드포인트만 사용 |
+| Cloudflare R2 | `FileStoragePort` 인터페이스 + `StubFileStorage`(현재 무네트워크 stub, 결정적 URL) | `file` | 실 R2 연동은 후속 — Port 구현체 교체 방식. AWS SDK 미사용(P-002) |
 | PG사(결제) | REST API (PG사별 SDK) | `payment` | 멱등성 키 필수 |
 | 이메일(알림) | SMTP 또는 외부 SaaS | `notification` | [TBD] — 골격 구축 후 결정 |
 | 푸시(알림) | FCM | `notification` | Flutter 앱 대상 |
@@ -177,17 +177,19 @@ completed → refund_pending → refunded
 postgres (단일 인스턴스, Fly Postgres)
 ├── schema: users      (users, refresh_tokens, sellers, addresses, wishlists, product_views)
 ├── schema: products   (categories, products, product_images, variants, inventory, inventory_logs)
+├── schema: users      (users, refresh_tokens, sellers, addresses, wishlists, product_views, notifications)
+├── schema: products   (categories, products, product_images, variants, inventory, inventory_logs)
 ├── schema: commerce   (carts, coupons, user_coupons, reviews)
 ├── schema: orders     (orders, order_items, order_events, shipments, shipment_tracking)
-├── schema: payments   (payments, refunds)
+├── schema: payments   (payments, refunds, payment_outbox)
 ├── schema: settlements(settlements, settlement_items)
-├── schema: admin      (notices, system_configs, audit_logs, notifications)
-└── schema: files      (files)
+├── schema: admin      (banners)
+└── schema: files      (file_assets)
 ```
 
-> **실재 상태**: **19개 테이블 실체화**(Prisma migrate 적용) — `users` 6(users·refresh_tokens·sellers·addresses·wishlists·product_views) + `products` 6(categories·products·product_images·variants·inventory·inventory_logs) + `commerce` 1(carts) + `orders` 3(orders·order_items·order_events) + `payments` 3(payments·refunds·payment_outbox).
-> 나머지 3개 스키마(settlements·admin·files)는 네임스페이스만 선언(테이블 0). Variant 가 옵션을 인라인 필드로 흡수(별도 options 테이블 없음). `order_events`·`inventory_logs` 는 append-only. 금전 필드(totalAmount·unitPrice·amount 등)는 Decimal(P-005).
-> 나머지 도메인 테이블(settlements·admin·files)은 실구현 시 추가될 **목표** 구조다.
+> **실재 상태**: **29개 테이블 실체화**(Prisma migrate 적용, 마이그레이션 6차) — `users` 7(+ notifications) · `products` 6 · `commerce` 4(carts·coupons·user_coupons·reviews) · `orders` 5(+ shipments·shipment_tracking) · `payments` 3(payments·refunds·payment_outbox) · `settlements` 2(settlements·settlement_items) · `admin` 1(banners) · `files` 1(file_assets).
+> Variant 가 옵션을 인라인 필드로 흡수(별도 options 테이블 없음). `order_events`·`inventory_logs`·`shipment_tracking` 은 append-only. 금전 필드(totalAmount·unitPrice·amount·totalSales·commission·payoutAmount·saleAmount 등)는 전부 Decimal(12,2)(P-005). cross-schema/cross-module 참조는 plain String(FK 미선언, P-001) — notifications.userId·file_assets.ownerId·banners 무참조·settlements.sellerId·settlement_items.orderItemId·shipments.orderId 등.
+> notifications 는 `admin` 이 아닌 `users` 스키마에 위치한다(사용자 알림). admin 스키마는 banners 1개뿐(공지·시스템설정·audit_logs 는 미도입 — GAP-007-01).
 > Refresh Token 은 원문이 아닌 SHA-256 해시(`tokenHash`)로 저장된다(ADR-003).
 
 **주요 설계 결정 (비도출 지식)**:
@@ -221,7 +223,11 @@ postgres (단일 인스턴스, Fly Postgres)
 
 | 항목 | 내용 | 영향 범위 | 관련 spec |
 |---|---|---|---|
-| 10개 도메인 모듈 빈 스텁 | 8개 실구현(auth~payment) 외 10개 모듈(coupon·review·shipping·settlement·search·notification·file·banner·stats·admin)은 4계층 골격만 존재 | 해당 모듈 | Stage 3+ |
+| 정산 중복집계 미차단 (SEC-FIND-005-01, Medium) | `getCompletedItemsForSettlement` 가 기집계 항목 미제외 + `SettlementItem.orderItemId` UNIQUE 부재 → 동일/겹치는 기간 재정산 시 이중 지급액. admin-only 트리거 | `settlement`·`order` | 005-shipping-settlement |
+| 알림 이벤트 미연동 (GAP-006-01) | `NotificationService.create()` export 됐으나 주문·배송·정산·리뷰 이벤트 핸들러에서 호출 미구현 → 알림이 실제 생성되는 경로 부재 | `notification` 외 도메인 | 006 후속 |
+| file 메타 소유권·입력 검증 부재 (SEC-FIND-006-01/02, Low) | `GET /files/:id` 소유권 미검증(공개 URL 모델과 정합), presign contentType allowlist·크기상한 미적용, PENDING→UPLOADED confirm 부재(고아 누적, GAP-006-02) | `file` | 006 후속 |
+| 마이그레이션 드리프트 (GAP-005-03) | 005 마이그레이션 SQL 에 004(coupons·reviews) 테이블 생성 동반 캡처(004 모델이 schema 엔 있었으나 별도 마이그레이션 부재했던 기존 드리프트). DB 정상 동기화 | `prisma/migrations` | 005 |
+| admin audit log·운영 라우트 (GAP-007-01, OBS-007-01) | 관리자 액션 추적 audit_logs 테이블 미도입. 판매자 승인이 `PATCH /sellers/:id/approve`·`POST /admin/sellers/:id/approve` 두 라우트로 노출(로직은 단일 재사용) | `admin`·`seller` | 007 후속 |
 | ~~inventory 재고입고 소유권 미검증 (SEC-002)~~ | **RESOLVED (003-commerce)** — `assertSellerOwnsVariant`(variantId→product→seller 소유권 검증)를 inventory stock-in·getStock 에 적용 | `inventory`·`product` | 003-commerce FR-050/051 |
 | cross-schema plain String 참조 (P-001·ADR-001) | users·products 스키마 간 FK 없음. Wishlist/ProductView.productId·Product.sellerId·InventoryLog.variantId 등 plain String 참조 → DB 수준 참조 무결성 없음(의도적), 삭제 시 고아 레코드 가능 | users·products 스키마 | 002-catalog |
 | pino-pretty 미설치 | 로컬 `NODE_ENV=development` 에서 pino-pretty transport 모듈 오류. e2e 는 `NODE_ENV=production`(JSON 로그) 우회 중. 해소: `pnpm add -D pino-pretty --filter backend` | `apps/backend` 로컬 dev 로그 | 001-skeleton-bootstrap |
@@ -229,3 +235,12 @@ postgres (단일 인스턴스, Fly Postgres)
 | 단일 DB 단일 장애점 | Fly Postgres 단일 인스턴스. HA 옵션 미설정 시 장애 시 다운타임 발생 | 전체 | — |
 | 이메일 알림 제공자 미결정 | notification 모듈의 이메일 발송 SaaS(Resend·Mailgun 등) 미선정 | `notification` 모듈 | [TBD] |
 | 비용 추정 불확실 | 실제 트래픽·데이터 크기에 따라 Fly Postgres 요금 재산정 필요 | 인프라 | — |
+
+---
+
+## 7. 갱신 이력
+
+| 날짜 | 갱신 내용 | 관련 spec |
+|---|---|---|
+| 2026-06-29 | 005·006·007 반영 — 18개 도메인 전부 실구현(배송·정산·검색·알림·파일·배너·통계·운영), 29테이블. notifications 위치 정정(admin→users), file R2 Port+stub 정정, §6 신규 제약(SEC-FIND-005-01·006-01/02, GAP-005-03·006-01/02·007-01, OBS-007-01) 추가 | 005-shipping-settlement, 006-search-notification-file, 007-banner-stats-admin |
+| (이전) | 001~004 골격·카탈로그·거래·리뷰쿠폰 | 001~004 |

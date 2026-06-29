@@ -1,3 +1,28 @@
+## [007-banner-stats-admin] 구현 완료
+
+**변경 파일**:
+- `apps/backend/prisma/schema.prisma`: BannerPosition(admin) enum + Banner(신규 admin 스키마, `@@map("banners")`) 모델 추가. `banners(isActive, position, sortOrder)` 인덱스. FK 없음(단일 테이블, cross-schema 참조 컬럼 없음). **금전 필드 없음**(banner 한정 P-005 해당 없음).
+- `apps/backend/prisma/migrations/20260629085122_007_banner_stats_admin/`: 마이그레이션(007 객체만 — 드리프트 동반 없음).
+- `apps/backend/src/modules/banner/*`: repository·service·controller(Admin+공개)·module·dto(create/update) + service.spec(신규 11). admin.banners 단독 소유(P-001). 관리자 CRUD(POST 201·PATCH·DELETE 204·GET — JwtAuthGuard+AdminGuard) + 공개 GET /banners(무가드, isActive=true + 노출기간 `isWithinPeriod` 필터, sortOrder 순).
+- `apps/backend/src/modules/stats/*`: repository(빈 클래스)·service·controller(Admin+Seller)·module + service.spec(신규 4). 자체 테이블 없음 — Order/User/Seller Service DI 조합(P-001). overview(총 주문·완료 주문·총 매출 Decimal·총 사용자·총 판매자 — JwtAuthGuard+AdminGuard), seller stats(본인 completed 매출 Decimal·건수 — JwtAuthGuard + getApprovedSeller 본인 격리).
+- `apps/backend/src/modules/admin/*`: repository(빈 클래스)·service·controller·module·constants + service.spec(신규 5). 자체 테이블 없음 — Seller/User Service DI(P-001). listPendingSellers·approveSeller(SellerService.approve 재사용)·listUsers(cursor·민감 필드 제외·limit 1..100 클램프). 전부 JwtAuthGuard+AdminGuard.
+- `apps/backend/src/modules/order/order.service.ts`·`order.repository.ts`: 집계 4종 공개 메서드 추가(additive) — countAllOrders·countCompletedOrders·sumCompletedSales(Decimal)·getSellerSalesSummary(Decimal mul/add 누적). orders 스키마 내 집계.
+- `apps/backend/src/modules/user/user.service.ts`·`user.repository.ts`·`user.module.ts`: countAllUsers·listUsersForAdmin(AdminUserListItem password 제외 cursor) 추가(additive) + UserService export.
+- `apps/backend/src/modules/seller/seller.service.ts`·`seller.repository.ts`: countAllSellers·listByStatus 추가(additive). approve 는 기존 재사용(로직 불변).
+- `apps/backend/test/banner-admin.e2e-spec.ts`: AppModule 부팅 + 공개/인증/관리자 라우트(200/401/403) + 배너 노출기간 동작(활성 노출·미래 숨김) 검증(신규 8).
+- `apps/backend/test/static/cross-schema.spec.ts`: Banner·Stats·AdminRepository 크로스 스키마 금지 규칙 반영(신규 3). `auth-required-guards.spec.ts`: banner·stats·admin 컨트롤러 JwtAuthGuard 정적 검증 대상 추가.
+
+**검증**: tsc 0 / unit 24 suites·229 PASS(006 대비 +20 = banner 11 + stats 4 + admin 5, 회귀 0) / e2e+static 16 suites·84 PASS(신규 banner-admin.e2e 8 + cross-schema 규칙 3 포함) / AppModule 부팅 정상(BannerModule·StatsModule·AdminModule 3개 DI 등록).
+
+**후속 작업 시 주의사항**:
+- **관리자 audit log 부재(GAP-007-01, Low)**: 승인·삭제 등 관리자 조치를 기록하는 append-only 감사 로그 테이블이 없다(AdminRepository 빈 클래스). 보안 사고는 아니나 다수 관리자 운영 시 책임 추적을 위해 admin_audit_logs 후속 도입 검토.
+- **배너 노출기간 in-memory 필터(GAP-007-02, Low)**: `listPublic` 이 `listActiveOrdered`(isActive=true) 조회 후 노출기간을 애플리케이션 레벨(`isWithinPeriod`)에서 필터한다. 배너 수 증가 시 startsAt/endsAt DB where 절 푸시다운 검토.
+- **판매자 승인 병렬 라우트(OBS-007-01, Low)**: `SellerService.approve` 가 `PATCH /sellers/:id/approve`(seller) 와 `POST /admin/sellers/:id/approve`(admin) 두 라우트에서 호출된다(로직 중복 아님, 라우트 표면 둘). 두 경로 모두 AdminGuard 보호로 권한 표면 동일. 후속 정책 spec 에서 운영 라우트를 admin 으로 일원화 검토.
+- **stats·admin 빈 Repository**: `StatsRepository`·`AdminRepository` 는 자체 테이블이 없어 빈 클래스이며 집계·운영은 도메인 Service DI 경유다. 자체 테이블이 정당화되기 전에는 확장하지 않는다(P-001).
+- **도메인 additive 집계 메서드**: order/user/seller 에 통계·운영용 공개 집계 메서드가 추가됨. 향후 해당 도메인 상태머신·스키마 변경 시 이 집계 메서드(특히 매출 Decimal 산술·completed 필터)의 정합성 재확인 필요.
+
+---
+
 ## [006-search-notification-file] 구현 완료
 
 **변경 파일**:
