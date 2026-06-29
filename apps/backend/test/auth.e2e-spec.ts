@@ -106,16 +106,16 @@ describe('AuthController (e2e)', () => {
       );
       expect(schemas).toHaveLength(EXPECTED_SCHEMAS.length);
 
-      // users 스키마 테이블 존재 확인 (users, refresh_tokens)
+      // users 스키마 핵심 테이블 존재 확인 (users, refresh_tokens 포함 여부만 검증)
+      // 002-catalog 이후 users 스키마가 sellers·addresses·wishlists·product_views 로 확장됨.
+      // 테이블 수가 늘어도 깨지지 않도록 arrayContaining 으로 핵심 2개만 단언.
       const tables = await prisma.$queryRawUnsafe<Array<{ table_name: string }>>(
         `SELECT table_name FROM information_schema.tables
          WHERE table_schema = 'users'
          ORDER BY table_name`,
       );
-      expect(tables).toHaveLength(2);
       const tableNames = tables.map((t) => t.table_name);
-      expect(tableNames).toContain('users');
-      expect(tableNames).toContain('refresh_tokens');
+      expect(tableNames).toEqual(expect.arrayContaining(['users', 'refresh_tokens']));
     });
   });
 

@@ -91,6 +91,24 @@ export class ProductRepository {
     return this.prisma.variant.findUnique({ where: { id } });
   }
 
+  async findVariantWithProduct(
+    id: string,
+  ): Promise<(Variant & { product: Product }) | null> {
+    return this.prisma.variant.findUnique({
+      where: { id },
+      include: { product: true },
+    });
+  }
+
+  async findVariantsWithProduct(
+    ids: string[],
+  ): Promise<(Variant & { product: Product })[]> {
+    return this.prisma.variant.findMany({
+      where: { id: { in: ids } },
+      include: { product: true },
+    });
+  }
+
   async createVariant(data: {
     productId: string;
     optionName: string;

@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { InventoryLogType } from '@prisma/client';
+import { PrismaService } from '../../shared/prisma/prisma.service';
 import { InsufficientStockException } from './inventory.exception';
 import { InventoryRepository } from './inventory.repository';
 
@@ -13,6 +14,7 @@ export interface StockChangedEvent {
 export class InventoryService {
   constructor(
     private readonly inventoryRepository: InventoryRepository,
+    private readonly prisma: PrismaService,
     private readonly eventEmitter: EventEmitter2,
   ) {}
 
@@ -33,7 +35,7 @@ export class InventoryService {
     });
   }
 
-  /** 재고 입고 + 이벤트 발행 (FR-030, SC-041) */
+  /** 재고 입고 + 커밋 후 이벤트 발행 (FR-030, SC-041) */
   async stockIn(variantId: string, quantity: number): Promise<void> {
     const inv = await this.inventoryRepository.findByVariant(variantId);
     if (!inv) throw new BadRequestException('Inventory not found for variant');
@@ -45,7 +47,9 @@ export class InventoryService {
       type: InventoryLogType.STOCK_IN,
       delta: quantity,
     });
-    await this.emitStockChanged(inv.productId);
+
+    // 트랜잭션 커밋 이후 이벤트 발행 (onAfterCommit: ALS 활성 시 훅 등록, 비활성 시 즉시 실행)
+    await this.prisma.onAfterCommit(() => this.emitStockChanged(inv.productId));
   }
 
   /** 현재 재고 수량 조회 (FR-031, SC-042) */
@@ -86,7 +90,29 @@ export class InventoryService {
       delta: -quantity,
       orderId,
     });
-    await this.emitStockChanged(inv.productId);
+
+    // 트랜잭션 커밋 이후 이벤트 발행
+    await this.prisma.onAfterCommit(() => this.emitStockChanged(inv.productId));
+  }
+
+  /**
+   * 재고 복원 — 주문 취소 시 차감분 되돌리기 (FR-036).
+   * orderId: 복원 사유 추적용 로그 참조.
+   */
+  async restoreStock(variantId: string, quantity: number, orderId: string): Promise<void> {
+    const inv = await this.inventoryRepository.findByVariant(variantId);
+    if (!inv) throw new BadRequestException(`Inventory not found for variant: ${variantId}`);
+
+    await this.inventoryRepository.increment(variantId, quantity);
+    await this.inventoryRepository.appendLog({
+      variantId,
+      productId: inv.productId,
+      type: InventoryLogType.RESTORE,
+      delta: quantity,
+      orderId,
+    });
+
+    await this.prisma.onAfterCommit(() => this.emitStockChanged(inv.productId));
   }
 
   private async emitStockChanged(productId: string): Promise<void> {

@@ -104,6 +104,9 @@ Flutter: 기존 스토어 배포 파이프라인 유지 (수동)
 | 구조적 로그 | pino → Fly 로그 스트림 | `flyctl logs` 또는 외부 로그 수집기 연동 가능 |
 | 인프라 메트릭 | Fly metrics (CPU·메모리·응답시간) | Fly 대시보드 |
 | 헬스체크 | `GET /health` | Fly 배포 헬스체크 엔드포인트. 응답 지연 시 배포 중단 |
+| 결제 outbox 적체 | `payments.payment_outbox` `pending` 행 수 | OutboxRelay 가 pg-boss 로 relay. pending 적체 증가 시 relay 장애 의심 |
+| 자동 구매확정 | AutoConfirmJob 마지막 성공 시각 | 배송완료 7일(`AUTO_CONFIRM_DAYS`) 후 자동 completed. 미동작 시 주문 적체 |
+| 주문/결제 P95 | `POST /orders` ·`POST /payments` 응답시간 | NFR-001(주문 ≤1,000ms)·NFR-002(결제 ≤2,000ms). SC-045/046 운영 시드 후 측정(PROC-03) |
 
 ---
 
@@ -195,3 +198,6 @@ pnpm --filter backend test:e2e
 | R2 서빙 도메인 | R2 공개 접근 시 Cloudflare 커스텀 도메인 설정 또는 R2.dev 서브도메인 사용 필요 | `file` 모듈 | 로드맵 1단계 파일 업로드 spec |
 | Vercel 무료 플랜 한계 | 빌드 시간·대역폭·팀 멤버 제한. 트래픽 증가 시 유료 전환 | console 웹 | — |
 | AdminGuard fail-closed 권한 | seller approve/reject 는 `ADMIN_USER_IDS` env 화이트리스트로만 인가. 미설정/오설정 시 전원 403(승인 업무 마비 vs 자가 승인 차단의 trade-off) | `seller` 모듈·운영 | 002-catalog (SEC-001 대응) |
+| pg-boss `pgboss` 스키마 자동 생성 | pg-boss 가 앱 기동 시 동일 `DATABASE_URL` PostgreSQL 에 `pgboss` 스키마를 자동 생성 → DB 사용자에게 **스키마 생성(CREATE) 권한 필요**. Fly Postgres 운영 사용자 권한 확인 | `infrastructure/pgboss`·운영 | 003-commerce |
+| pg-boss 버전 핀 (`^10.4.2`) | CommonJS·Node≥20 호환 버전 고정. v11(Node≥22)·v12(ESM·Node≥22.12)는 본 프로젝트(Node 20·CommonJS)와 비호환. import 는 `import PgBoss = require('pg-boss')`(default import 금지 — 런타임 constructor 실패) | `infrastructure/pgboss` | 003-commerce |
+| deferred 성능 SC 사후 점검 (PROC-03) | SC-045/046(주문/결제 P95 integration)은 TEST_JWT_TOKEN·운영 시드 부재로 파이프라인 내 deferred. **운영 시드 구성 후 P95 측정** 필요(아래 §4 모니터링 연계) | 운영 | 003-commerce coverage-gap |

@@ -1,19 +1,25 @@
 /**
  * InventoryService 단위 테스트 — [env:unit]
  *
- * 대상 SC: SC-041, SC-042, SC-046
+ * 대상 SC: SC-041, SC-042, SC-046 (002-catalog 계승)
+ *           SC-025 (003-commerce 신규 — restoreStock, T074)
  * (SC-043,044,045 는 test/static/ — 정적 코드 검증)
- * 검증 방법: Jest mock (InventoryRepository, EventEmitter2)
+ * 검증 방법: Jest mock (InventoryRepository, EventEmitter2, PrismaService)
  *
  * 참고: SC-041 quantity<=0 유효성 검사는 StockInDto @Min(1) (DTO 레벨) 로 처리.
  *   서비스 레벨에서는 유효한 quantity(>0)가 들어온다고 가정.
  *   DTO 유효성은 test/static/ 에서 정적 검증.
+ *
+ * T013 (003): InventoryService.stockIn/decreaseStock 의 emit 이 onAfterCommit 으로 이동.
+ *   PrismaService mock (passthrough) 을 providers 에 추가하여 호출 흐름 유지.
  */
 
 import { Test, TestingModule } from '@nestjs/testing';
 import { EventEmitter2 } from '@nestjs/event-emitter';
+import { BadRequestException } from '@nestjs/common';
 import { InventoryService } from './inventory.service';
 import { InventoryRepository } from './inventory.repository';
+import { PrismaService } from '../../shared/prisma/prisma.service';
 
 // ─────────────────────────────────────────────
 // Mock 팩토리 (production InventoryRepository 메서드 그대로)
@@ -29,6 +35,17 @@ const mockInventoryRepository = {
 
 const mockEventEmitter = {
   emit: jest.fn(),
+};
+
+/**
+ * PrismaService passthrough mock (T001, T013):
+ * runInTransaction: fn 그대로 실행, onAfterCommit: cb 즉시 실행.
+ * InventoryService 가 ALS 없이도 동작하도록 보장.
+ */
+const mockPrismaService = {
+  runInTransaction: jest.fn().mockImplementation((fn: () => unknown) => fn()),
+  onAfterCommit: jest.fn().mockImplementation((cb: () => unknown) => Promise.resolve(cb())),
+  get tx() { return this; },
 };
 
 // ─────────────────────────────────────────────
@@ -49,12 +66,15 @@ describe('InventoryService', () => {
 
   beforeEach(async () => {
     jest.clearAllMocks();
+    // PrismaService.onAfterCommit passthrough 초기화
+    mockPrismaService.onAfterCommit.mockImplementation((cb: () => unknown) => Promise.resolve(cb()));
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         InventoryService,
         { provide: InventoryRepository, useValue: mockInventoryRepository },
         { provide: EventEmitter2, useValue: mockEventEmitter },
+        { provide: PrismaService, useValue: mockPrismaService },
       ],
     }).compile();
 
@@ -232,6 +252,97 @@ describe('InventoryService', () => {
       await expect(
         service.decreaseStock(FIXED_VARIANT_ID, 10, FIXED_ORDER_ID), // stock=10, req=10
       ).resolves.toBeUndefined();
+    });
+  });
+
+  // ─────────────────────────────────────────────
+  // SC-025 (003-commerce): restoreStock — 주문 취소 시 재고 복원 (T074)
+  // ─────────────────────────────────────────────
+  describe('SC-025: restoreStock — 주문 취소 재고 복원', () => {
+    it('when_restore_stock_then_incremented_and_log_created', async () => {
+      /**
+       * SC-025 (FR-023 관련, T013/T074):
+       * restoreStock(variantId, quantity, orderId) 호출 시
+       * variant 재고 증가 + RESTORE 타입 inventory_log 생성.
+       * production: findByVariant → increment(variantId, quantity)
+       *   → appendLog(type=RESTORE, delta=+quantity, orderId)
+       *   → onAfterCommit(() => emitStockChanged(productId))
+       */
+      mockInventoryRepository.findByVariant.mockResolvedValue(FIXED_INVENTORY);
+      mockInventoryRepository.increment.mockResolvedValue({
+        ...FIXED_INVENTORY,
+        quantity: 13, // 10 + 3 restored
+      });
+      mockInventoryRepository.appendLog.mockResolvedValue({
+        id: 'log-restore-001',
+        variantId: FIXED_VARIANT_ID,
+        productId: FIXED_PRODUCT_ID,
+        type: 'RESTORE',
+        delta: 3,
+        orderId: FIXED_ORDER_ID,
+      });
+      mockInventoryRepository.sumQuantityByProduct.mockResolvedValue(13);
+
+      await service.restoreStock(FIXED_VARIANT_ID, 3, FIXED_ORDER_ID);
+
+      // 재고 증가 호출 확인
+      expect(mockInventoryRepository.increment).toHaveBeenCalledWith(FIXED_VARIANT_ID, 3);
+      // RESTORE 타입 로그 생성 + orderId 포함
+      expect(mockInventoryRepository.appendLog).toHaveBeenCalledWith(
+        expect.objectContaining({
+          variantId: FIXED_VARIANT_ID,
+          type: 'RESTORE',
+          delta: 3,
+          orderId: FIXED_ORDER_ID,
+        }),
+      );
+      // onAfterCommit 호출 (emitStockChanged 트리거)
+      expect(mockPrismaService.onAfterCommit).toHaveBeenCalled();
+    });
+
+    it('when_restore_stock_variant_not_found_then_bad_request', async () => {
+      /**
+       * SC-025 (FR-023 관련) Error:
+       * 존재하지 않는 variant에 restoreStock 시 BadRequestException.
+       * production: findByVariant → null → BadRequestException.
+       */
+      mockInventoryRepository.findByVariant.mockResolvedValue(null);
+
+      await expect(
+        service.restoreStock(FIXED_VARIANT_ID, 3, FIXED_ORDER_ID),
+      ).rejects.toThrow(BadRequestException);
+
+      // increment는 호출되지 않아야 함
+      expect(mockInventoryRepository.increment).not.toHaveBeenCalled();
+    });
+
+    it('when_restore_stock_full_quantity_then_incremented', async () => {
+      /**
+       * SC-025 (FR-023 관련) Edge:
+       * 주문의 전체 수량(예: 10개)를 복원할 때도 정상 처리.
+       */
+      mockInventoryRepository.findByVariant.mockResolvedValue({
+        ...FIXED_INVENTORY,
+        quantity: 0, // 재고 완전 소진 상태
+      });
+      mockInventoryRepository.increment.mockResolvedValue({
+        ...FIXED_INVENTORY,
+        quantity: 10, // 10개 복원
+      });
+      mockInventoryRepository.appendLog.mockResolvedValue({
+        id: 'log-restore-002',
+        variantId: FIXED_VARIANT_ID,
+        type: 'RESTORE',
+        delta: 10,
+        orderId: FIXED_ORDER_ID,
+      });
+      mockInventoryRepository.sumQuantityByProduct.mockResolvedValue(10);
+
+      await expect(
+        service.restoreStock(FIXED_VARIANT_ID, 10, FIXED_ORDER_ID),
+      ).resolves.toBeUndefined();
+
+      expect(mockInventoryRepository.increment).toHaveBeenCalledWith(FIXED_VARIANT_ID, 10);
     });
   });
 });

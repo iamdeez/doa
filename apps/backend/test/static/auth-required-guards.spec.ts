@@ -1,7 +1,10 @@
 /**
- * 정적 코드 검증 — SC-048 [env:unit / 정적 보완]
+ * 정적 코드 검증 — SC-048 / SC-007 [env:static]
  *
- * 대상 SC: SC-048 (NFR-002 관련)
+ * 대상 SC:
+ *   SC-048 (002-catalog, NFR-002 관련) — 인증 필수 엔드포인트 JwtAuthGuard 검증
+ *   SC-007 (003-commerce, FR-007 관련) — cart/order/payment 컨트롤러 JWT 인증 필수
+ *
  * 검증 방법:
  *   (1) 컨트롤러 소스 텍스트 파싱: @UseGuards(JwtAuthGuard) 데코레이터 존재 확인
  *   (2) 인증 불필요 엔드포인트에 @Public() 또는 guard 제외 패턴 확인
@@ -11,19 +14,26 @@
  *   요청 시 401 반환.
  *
  *   인증 필수 컨트롤러 목록:
+ *   002-catalog (SC-048):
  *   - UserController (GET /users/me, POST /users/me/addresses 등)
  *   - SellerController (POST /sellers/register 등)
  *   - ProductController (POST /products 등; GET /products 는 비인증 허용)
  *   - InventoryController (POST /inventory/:variantId/stock-in 등)
+ *
+ *   003-commerce (SC-007):
+ *   - CartController (GET /cart, POST /cart/items 등)
+ *   - OrderController (POST /orders, GET /orders 등)
+ *   - PaymentController (POST /payments 등)
+ *   - SellerOrderController (PATCH /orders/:id/confirm-by-seller 등)
  *
  *   인증 불필요 엔드포인트:
  *   - GET /categories → CategoryController
  *   - GET /products → ProductController (열람)
  *   - GET /products/:id → ProductController (열람)
  *
- * [env:unit] 보완:
- *   이 정적 검증은 SC-002 (user.controller.spec.ts) 의 guard 동작 단위 테스트를
- *   보완하는 정적 검증이다. 단위 테스트로 충분히 커버되므로 중복 단언을 최소화.
+ * [env:static] 보완:
+ *   이 정적 검증은 SC-002/SC-007 guard 동작 단위 테스트를 보완하는 정적 검증이다.
+ *   단위 테스트로 충분히 커버되므로 중복 단언을 최소화.
  */
 
 import * as fs from 'fs';
@@ -33,9 +43,15 @@ const BACKEND_ROOT = path.resolve(__dirname, '../../');
 
 // 인증 필수 컨트롤러 → JwtAuthGuard 또는 앱 전역 가드 적용 대상
 const AUTH_REQUIRED_CONTROLLERS = [
+  // ── 002-catalog (SC-048) ──
   'src/modules/user/user.controller.ts',
   'src/modules/seller/seller.controller.ts',
   'src/modules/inventory/inventory.controller.ts',
+  // ── 003-commerce (SC-007) ──
+  'src/modules/cart/cart.controller.ts',
+  'src/modules/order/order.controller.ts',
+  'src/modules/payment/payment.controller.ts',
+  'src/modules/order/seller-order.controller.ts',
 ];
 
 // 전역 가드 설정 파일 (main.ts 또는 app.module.ts) — AppGuard / JwtAuthGuard 전역 등록 확인
@@ -44,12 +60,16 @@ const APP_ENTRY_CANDIDATES = [
   'src/app.module.ts',
 ];
 
-describe('SC-048: 인증 필수 엔드포인트 JwtAuthGuard 정적 검증', () => {
+describe('SC-048/SC-007: 인증 필수 엔드포인트 JwtAuthGuard 정적 검증', () => {
   it('when_inspect_auth_controllers_then_jwt_guard_applied', () => {
     /**
-     * SC-048 (NFR-002 관련):
+     * SC-048 (002-catalog, NFR-002 관련) / SC-007 (003-commerce, FR-007 관련):
      * 인증 필수 컨트롤러에 JwtAuthGuard 가 적용되어 있어야 한다.
      * @UseGuards(JwtAuthGuard) 또는 전역 가드 방식 중 하나.
+     *
+     * 003-commerce 컨트롤러 (SC-007 추가):
+     *   cart.controller.ts, order.controller.ts, payment.controller.ts,
+     *   seller-order.controller.ts
      *
      * 전략:
      *   컨트롤러 소스에 'JwtAuthGuard' 문자열이 포함되어 있거나,

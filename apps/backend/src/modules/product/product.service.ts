@@ -16,6 +16,17 @@ export interface ProductListResult {
   nextCursor: string | null;
 }
 
+export interface VariantSnapshot {
+  variantId: string;
+  productId: string;
+  sellerId: string;
+  unitPrice: Prisma.Decimal;
+  optionName: string;
+  optionValue: string;
+  productTitle: string;
+  sku: string;
+}
+
 @Injectable()
 export class ProductService {
   constructor(
@@ -220,6 +231,65 @@ export class ProductService {
   async listMyProducts(userId: string) {
     const seller = await this.sellerService.getApprovedSeller(userId);
     return this.productRepository.listBySeller(seller.id);
+  }
+
+  // ── Commerce 지원 (cart·order) ────────────────────────────────────
+
+  /**
+   * 주문/장바구니 스냅샷 생성용: 단일 variant 조회.
+   * variant 가 없거나 ACTIVE/OUT_OF_STOCK 아닌 상품이면 NotFoundException.
+   */
+  async getVariantSnapshot(variantId: string): Promise<VariantSnapshot> {
+    const variant = await this.productRepository.findVariantWithProduct(variantId);
+    if (!variant) throw new NotFoundException(`Variant not found: ${variantId}`);
+    return {
+      variantId: variant.id,
+      productId: variant.productId,
+      sellerId: variant.product.sellerId,
+      unitPrice: variant.price,
+      optionName: variant.optionName,
+      optionValue: variant.optionValue,
+      productTitle: variant.product.title,
+      sku: variant.sku,
+    };
+  }
+
+  /**
+   * 주문 생성용: 복수 variant 일괄 스냅샷.
+   * 누락된 variantId 가 있으면 NotFoundException.
+   * 반환: Map<variantId, VariantSnapshot> — O(1) 조회용.
+   */
+  async getVariantSnapshots(variantIds: string[]): Promise<Map<string, VariantSnapshot>> {
+    const variants = await this.productRepository.findVariantsWithProduct(variantIds);
+    const found = new Set(variants.map((v) => v.id));
+    const missing = variantIds.filter((id) => !found.has(id));
+    if (missing.length > 0) {
+      throw new NotFoundException(`Variants not found: ${missing.join(', ')}`);
+    }
+    const result = new Map<string, VariantSnapshot>();
+    for (const variant of variants) {
+      result.set(variant.id, {
+        variantId: variant.id,
+        productId: variant.productId,
+        sellerId: variant.product.sellerId,
+        unitPrice: variant.price,
+        optionName: variant.optionName,
+        optionValue: variant.optionValue,
+        productTitle: variant.product.title,
+        sku: variant.sku,
+      });
+    }
+    return result;
+  }
+
+  /**
+   * SEC-002: variantId → product.sellerId → 현재 사용자 seller 소유 검증.
+   * 소유자가 아닌 경우 ForbiddenException.
+   */
+  async assertSellerOwnsVariant(userId: string, variantId: string): Promise<void> {
+    const variant = await this.productRepository.findVariantWithProduct(variantId);
+    if (!variant) throw new NotFoundException(`Variant not found: ${variantId}`);
+    await this.assertOwner(userId, variant.product.sellerId);
   }
 
   // ── Private helpers ───────────────────────────────────────────────

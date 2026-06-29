@@ -1,3 +1,104 @@
+## [003-commerce] 구현 완료
+
+**변경 파일**:
+
+### Prisma 스키마 및 마이그레이션
+
+- `apps/backend/prisma/schema.prisma`: commerce·orders·payments 스키마 7개 테이블 신규 정의. Cart(JSONB items), Order(Decimal totalAmount/discountAmount, shippingAddressSnapshot, deliveredAt), OrderItem(VariantSnapshot JSONB, Decimal unitPrice), OrderEvent(append-only), Payment(Decimal amount, idempotency key), PaymentOutbox, Refund 모델. OrderStatus·ActorType·PaymentStatus enum 추가. InventoryLogType에 RESTORE 추가 (FR-023).
+- `apps/backend/prisma/migrations/20260628141551_003_commerce/migration.sql`: commerce·orders·payments 스키마 7테이블 DDL + enum 신규 + 인덱스 9개.
+
+### Prisma shared 모듈
+
+- `apps/backend/src/shared/prisma/prisma.service.ts`: `runInTransaction(fn)` / `tx` getter / `onAfterCommit(fn)` 메서드 추가. ALS(AsyncLocalStorage) 기반 tx-aware 확장. outbox 패턴·cross-schema 단일 트랜잭션 지원 (FR-013, FR-033, P-005).
+
+### pg-boss 인프라 모듈 (신규)
+
+- `apps/backend/src/infrastructure/pgboss/pgboss.module.ts`: `PgBossModule` — PgBoss 싱글톤 제공, 앱 기동 시 초기화. `@Global()` 모듈.
+- `apps/backend/src/infrastructure/pgboss/pgboss.service.ts`: `PgBossService` — pg-boss 인스턴스 생명주기(start/stop) 관리, 큐 생성, send/schedule API 제공. `import PgBoss = require('pg-boss')` CommonJS 방식 사용 (ESM default import 런타임 오류 방지).
+- `apps/backend/src/infrastructure/pgboss/outbox-relay.ts`: `OutboxRelay` — payment_outbox 테이블 폴링, pg-boss 잡 발행. payment.completed → order confirmed 상태 전이.
+- `apps/backend/src/infrastructure/pgboss/auto-confirm-job.ts`: `AutoConfirmJob` — 배송 완료 후 7일 경과 주문 자동 completed 전환 pg-boss 스케줄 잡 (FR-027).
+- `apps/backend/src/infrastructure/pgboss/pgboss.constants.ts`: OUTBOX_QUEUE·AUTO_CONFIRM_QUEUE 큐 이름 상수.
+
+### cart 모듈
+
+- `apps/backend/src/modules/cart/cart.service.ts`: addItem(수량 합산), updateItem(수량 0 제거), removeItem, getCart, removeItems(주문 시 장바구니 비움) 구현. JSONB items 배열 관리.
+- `apps/backend/src/modules/cart/cart.repository.ts`: commerce.carts 테이블 전용 Prisma 접근. findOrCreate, save, findByUserId.
+- `apps/backend/src/modules/cart/cart.controller.ts`: POST/PATCH/DELETE /cart/items, GET /cart 엔드포인트. JwtAuthGuard 적용.
+- `apps/backend/src/modules/cart/cart.module.ts`: CartService·CartRepository 등록 및 export.
+- `apps/backend/src/modules/cart/cart.types.ts`: CartItem 인터페이스 정의.
+- `apps/backend/src/modules/cart/dto/`: add-cart-item.dto.ts, update-cart-item.dto.ts
+- `apps/backend/src/modules/cart/cart.service.spec.ts`: CartService unit 테스트 (SC-001~008)
+
+### order 모듈
+
+- `apps/backend/src/modules/order/order.service.ts`: createOrder(재고 확인→차감→주문 생성→장바구니 비움 단일 tx. discountAmount=Decimal(0) 서버 고정 — SEC-FIND-004), listOrders(cursor 페이지네이션), getOrderDetail(403 소유권), cancelOrder(pending/confirmed 취소·completed 결제 환불·재고 복구·동일 tx. 환불 경로: `PaymentService.findPaymentByOrderId(orderId)` 직접 조회 — SEC-FIND-001), sellerConfirmOrder(preparing 전환·sellerId 검증), completeOrder(delivered→completed·403), markConfirmed(outbox relay용 pending→confirmed), autoConfirmDeliveredOrders(delivered→completed + SYSTEM 액터 appendEvent — SEC-FIND-002) 구현.
+- `apps/backend/src/modules/order/order.repository.ts`: orders 스키마 전용 접근. createOrder, findById, findByUserId(cursor), findBySellerOrderItems, appendEvent(append-only), updateStatus, findDeliveredBefore.
+- `apps/backend/src/modules/order/order.controller.ts`: POST /orders, GET /orders, GET /orders/:id, DELETE /orders/:id, PATCH /orders/:id/confirm, POST /orders/:id/complete 엔드포인트.
+- `apps/backend/src/modules/order/seller-order.controller.ts`: GET /sellers/me/orders 엔드포인트 (FR-024).
+- `apps/backend/src/modules/order/order.events.ts`: OrderCreated·OrderCancelled·OrderConfirmed 이벤트 상수.
+- `apps/backend/src/modules/order/order.module.ts`: OrderService·OrderRepository·SellerOrderController 등록. CartModule·InventoryModule·PaymentModule 의존.
+- `apps/backend/src/modules/order/order.constants.ts`: AUTO_CONFIRM_DAYS=7 상수 정의.
+- `apps/backend/src/modules/order/dto/create-order.dto.ts`: items(variantId·quantity)·shippingAddress DTO. discountAmount 필드 없음(SEC-FIND-004: 쿠폰 미구현으로 서버 고정).
+- `apps/backend/src/modules/order/order.service.spec.ts`: OrderService unit 테스트 (SC-009~032, SC-037). SC-024 SEC-FIND-001 반영: findPaymentByOrderId mock + refund 호출 단언.
+
+### payment 모듈
+
+- `apps/backend/src/modules/payment/payment.service.ts`: processPayment(Idempotency-Key 검증·멱등성·PG stub 호출·outbox 기록 동일 tx), refundPayment(환불·outbox 기록·이중환불 409·동일 tx), findPaymentByOrderId(orderId 기반 결제 조회 — SEC-FIND-001 지원) 구현.
+- `apps/backend/src/modules/payment/payment.repository.ts`: payments 스키마 전용 접근. createPayment, findByOrderId, findByIdempotencyKey, updateStatus, createOutbox, createRefund.
+- `apps/backend/src/modules/payment/payment.controller.ts`: POST /payments 엔드포인트. Idempotency-Key 헤더 필수 검증 + `isUUID(key, '4')` UUID v4 형식 검증 추가 (SEC-FIND-005: 비-UUID v4 → 400).
+- `apps/backend/src/modules/payment/payment.module.ts`: PaymentService·PaymentRepository·StubPaymentGateway 등록 및 export. PaymentRepository exports 포함(OutboxRelay DI 해소).
+- `apps/backend/src/modules/payment/payment-gateway.port.ts`: PaymentGatewayPort 인터페이스 정의 (FR-032).
+- `apps/backend/src/modules/payment/stub-payment-gateway.ts`: StubPaymentGateway — 항상 성공 반환 stub 구현 (FR-032).
+- `apps/backend/src/modules/payment/dto/create-payment.dto.ts`: orderId·idempotencyKey(UUID v4) DTO. amount 필드 없음(SEC-FIND-003: 금액은 서버 측 order.totalAmount 사용).
+- `apps/backend/src/modules/payment/payment.service.spec.ts`: PaymentService unit 테스트 (SC-033~041, SC-052)
+
+### inventory 모듈 (SEC-002 수정)
+
+- `apps/backend/src/modules/inventory/inventory.service.ts`: restoreStock(variantId, quantity, orderId) 신규 메서드 추가 (FR-023). stock.changed 이벤트 발행.
+- `apps/backend/src/modules/inventory/inventory.controller.ts`: POST /inventory/:variantId/stock-in·GET /inventory/:variantId/stock에 소유권 검증(variantId→Variant.productId→Product.sellerId) 추가. 비소유 판매자 403 반환 (FR-050, FR-051, SEC-002 수정).
+- `apps/backend/src/modules/inventory/inventory.repository.ts`: restoreStock 지원 메서드 추가.
+- `apps/backend/src/modules/inventory/inventory.module.ts`: ProductRepository export 추가 (소유권 검증용).
+- `apps/backend/src/modules/inventory/inventory.service.spec.ts`: restoreStock 단위 테스트 추가.
+- `apps/backend/src/modules/inventory/inventory.controller.spec.ts`: SEC-002 소유권 검증 테스트 (SC-042~044) — 타 판매자 403, 본인 판매자 통과.
+
+### product 모듈 (의존성 추가)
+
+- `apps/backend/src/modules/product/product.service.ts`: getVariantWithProduct(variantId)·getVariantSnapshots(variantIds) 메서드 추가 — inventory 소유권 검증 및 주문 스냅샷 지원.
+- `apps/backend/src/modules/product/product.repository.ts`: findVariantWithProduct(variantId) 메서드 추가.
+- `apps/backend/src/modules/product/product.module.ts`: ProductRepository export 추가.
+
+### 앱 루트
+
+- `apps/backend/src/app.module.ts`: PgBossModule 등록 추가.
+
+### 정적/통합 테스트
+
+- `apps/backend/test/static/auth-required-guards.spec.ts`: CartController·OrderController·SellerOrderController·PaymentController JwtAuthGuard 검증 추가 (SC-007, SC-047).
+- `apps/backend/test/static/cross-schema.spec.ts`: commerce·orders·payments 스키마 모듈 크로스 참조 금지 검증 추가 (SC-050).
+- `apps/backend/test/static/schema-decimal.spec.ts`: totalAmount·discountAmount·amount·unitPrice Decimal 타입 검증 + unitPrice 주석 라인 false positive 수정 (SC-049).
+- `apps/backend/test/auth.e2e-spec.ts`: SC-006 `toHaveLength(2)` → `arrayContaining(['users','refresh_tokens'])` 교체 (002 이후 users 스키마 테이블 수 증가 대응).
+- `apps/backend/test/orders.e2e-spec.ts`: POST /orders P95·구조 검증 (SC-045 — integration deferred).
+- `apps/backend/test/payments.e2e-spec.ts`: POST /payments P95·구조 검증 (SC-046 — integration deferred).
+
+### 패키지
+
+- `apps/backend/package.json`: pg-boss@^10.4.2 의존성 추가.
+- `pnpm-lock.yaml`: pg-boss 락 추가.
+
+**후속 작업 시 주의사항**:
+
+- `pg-boss@^10.4.2` 버전 핀 유지 필수. v11(Node>=22)·v12(ESM·Node>=22.12)은 현재 프로젝트(Node 20.x + CommonJS)와 비호환. Node 업그레이드 없이 pg-boss 업그레이드 금지.
+- pg-boss 파일에서 `import PgBoss = require('pg-boss')` CommonJS 방식 유지 필수. `import PgBoss from 'pg-boss'` (ESM default import) 로 변경 시 `onModuleInit`에서 `PgBoss is not a constructor` 런타임 오류 발생.
+- pg-boss가 기동 시 `pgboss` 스키마를 PostgreSQL에 자동 생성하므로 DB 사용자에게 스키마 생성 권한(CREATE) 필요. Fly Postgres 운영 사용자 권한 확인 필수.
+- `PrismaService.runInTransaction(fn)` — ALS 기반 tx-aware 확장. OrderService·PaymentService에서 cross-entity 단일 트랜잭션 사용 중. 신규 트랜잭션 필요 시 `prisma.runInTransaction(() => { ... })` 패턴 준수.
+- `InventoryService.restoreStock(variantId, quantity, orderId)` 신규 인터페이스 추가됨. 주문 취소 플로우에서 반드시 호출.
+- SEC-FIND-001: `cancelOrder()` 내 결제 환불 조회는 `PaymentService.findPaymentByOrderId(orderId)` 경유 필수. `order.payments[]` include 방식은 order 스냅샷 의존으로 환불 미처리 위험 있음.
+- SEC-FIND-003/004: `CreatePaymentDto.amount`·`CreateOrderDto.discountAmount` 필드 없음(의도적). 금액·할인은 서버 고정값. 쿠폰/부분환불 기능 추가 시 별도 spec 필요 — 클라이언트 입력 허용 전 Security 검토 필수.
+- SC-045/046 P95 integration 검증은 docker-compose 환경 + `TEST_JWT_TOKEN`·`TEST_ORDER_ID` 환경변수 설정 후 수동 실행 필요 (coverage.md §deferred 참조).
+- context.md / infra.md 갱신 필요 (gaps.md GAP-001·GAP-002 참조 — Retrospective Agent 처리 위임).
+
+---
+
 ## [002-catalog] 구현 완료
 
 **변경 파일**:

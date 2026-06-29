@@ -4,13 +4,14 @@ import { PrismaService } from '../../shared/prisma/prisma.service';
 
 // P-001: products 스키마(products.inventory, products.inventory_logs)에만 접근.
 // append-only 규칙: inventory_logs 에 대한 update/delete 메서드 미존재 (FR-032, SC-043).
+// T012: this.prisma → this.prisma.tx — ALS 트랜잭션 전파 지원.
 
 @Injectable()
 export class InventoryRepository {
   constructor(private readonly prisma: PrismaService) {}
 
   async findByVariant(variantId: string): Promise<Inventory | null> {
-    return this.prisma.inventory.findUnique({ where: { variantId } });
+    return this.prisma.tx.inventory.findUnique({ where: { variantId } });
   }
 
   async createInventory(data: {
@@ -18,11 +19,11 @@ export class InventoryRepository {
     productId: string;
     quantity: number;
   }): Promise<Inventory> {
-    return this.prisma.inventory.create({ data });
+    return this.prisma.tx.inventory.create({ data });
   }
 
   async increment(variantId: string, qty: number): Promise<Inventory> {
-    return this.prisma.inventory.update({
+    return this.prisma.tx.inventory.update({
       where: { variantId },
       data: { quantity: { increment: qty } },
     });
@@ -34,14 +35,14 @@ export class InventoryRepository {
    * 반환 count=0 → 재고 부족 의미.
    */
   async conditionalDecrement(variantId: string, qty: number): Promise<{ count: number }> {
-    return this.prisma.inventory.updateMany({
+    return this.prisma.tx.inventory.updateMany({
       where: { variantId, quantity: { gte: qty } },
       data: { quantity: { decrement: qty } },
     });
   }
 
   async sumQuantityByProduct(productId: string): Promise<number> {
-    const result = await this.prisma.inventory.aggregate({
+    const result = await this.prisma.tx.inventory.aggregate({
       where: { productId },
       _sum: { quantity: true },
     });
@@ -56,6 +57,6 @@ export class InventoryRepository {
     delta: number;
     orderId?: string;
   }): Promise<InventoryLog> {
-    return this.prisma.inventoryLog.create({ data });
+    return this.prisma.tx.inventoryLog.create({ data });
   }
 }

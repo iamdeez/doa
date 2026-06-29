@@ -17,8 +17,8 @@
 - **현재 버전**: v1.0.0
 - **주요 기술 스택**: Node.js + TypeScript, NestJS, Prisma, PostgreSQL 16, Turborepo
 
-> 골격 구축(`001-skeleton-bootstrap`) + 카탈로그(`002-catalog`) 완료. `apps/backend`(NestJS 18모듈 — auth·user·seller·product·inventory **5개 실구현** + 13 스텁),
-> Prisma 12테이블·JWT 인증·AdminGuard·멀티스테이지 Docker·CI 가 실재한다. (001 골격 검증 32/32 PASS, 002 카탈로그 검증 101 PASS.)
+> 골격(`001`) + 카탈로그(`002`) + 거래(`003-commerce`) 완료. `apps/backend`(NestJS 18모듈 — auth·user·seller·product·inventory·**cart·order·payment 8개 실구현** + 10 스텁),
+> Prisma **19테이블**·JWT·AdminGuard·PrismaService ALS 트랜잭션·pg-boss(outbox·7일 자동확정)·Docker·CI 가 실재한다. (001 32/32, 002 101, 003 177 테스트 PASS.)
 
 ---
 
@@ -88,8 +88,10 @@ Events (발행/구독 — NestJS EventEmitter)
 | `stats` | `admin` | 집계·통계·대시보드 |
 | `admin` | `admin` | 공지·시스템 설정·운영 |
 
-> **구현 상태**: `auth`·`user`·`seller`·`product`·`inventory` **5개 실구현**(controller/service/repository/events/dto). 나머지 13개(cart~admin)는
-> 4계층 빈 스텁(골격만, 비즈니스 로직 없음 — Stage 3 대상).
+> **구현 상태**: `auth`·`user`·`seller`·`product`·`inventory`·`cart`·`order`·`payment` **8개 실구현**. 나머지 10개(coupon·review·shipping·settlement·search·notification·file·banner·stats·admin)는
+> 4계층 빈 스텁(골격만 — Stage 3+ 대상).
+>
+> **인프라(`src/infrastructure/pgboss/`)**: PgBossModule · OutboxRelay(payment_outbox → pg-boss relay) · AutoConfirmJob(배송완료 7일 후 자동 구매확정). `shared/prisma/PrismaService` 는 ALS(AsyncLocalStorage) tx-aware 확장(`runInTransaction`/`tx`/`onAfterCommit`) — cross-schema 단일 `$transaction` 참여. 결제: `PaymentGatewayPort` + stub(실 PG 후속), Idempotency-Key 멱등.
 
 ### 공통(shared)·인프라 모듈 (실구현)
 
@@ -182,9 +184,9 @@ postgres (단일 인스턴스, Fly Postgres)
 └── schema: files      (files)
 ```
 
-> **실재 상태**: `users` 스키마 6테이블(users·refresh_tokens·sellers·addresses·wishlists·product_views) + `products` 스키마 6테이블(categories·products·product_images·variants·inventory·inventory_logs) = **12개 테이블 실체화**(Prisma migrate 적용).
-> 나머지 6개 스키마(commerce·orders·payments·settlements·admin·files)는 네임스페이스만 선언(테이블 0). Variant 가 옵션을 인라인 필드(optionName·optionValue)로 흡수 — 별도 options 테이블 없음.
-> 위 괄호 안 나머지 도메인 테이블(commerce~files)은 실구현(Stage 3) 시 추가될 **목표** 구조다.
+> **실재 상태**: **19개 테이블 실체화**(Prisma migrate 적용) — `users` 6(users·refresh_tokens·sellers·addresses·wishlists·product_views) + `products` 6(categories·products·product_images·variants·inventory·inventory_logs) + `commerce` 1(carts) + `orders` 3(orders·order_items·order_events) + `payments` 3(payments·refunds·payment_outbox).
+> 나머지 3개 스키마(settlements·admin·files)는 네임스페이스만 선언(테이블 0). Variant 가 옵션을 인라인 필드로 흡수(별도 options 테이블 없음). `order_events`·`inventory_logs` 는 append-only. 금전 필드(totalAmount·unitPrice·amount 등)는 Decimal(P-005).
+> 나머지 도메인 테이블(settlements·admin·files)은 실구현 시 추가될 **목표** 구조다.
 > Refresh Token 은 원문이 아닌 SHA-256 해시(`tokenHash`)로 저장된다(ADR-003).
 
 **주요 설계 결정 (비도출 지식)**:
@@ -218,8 +220,8 @@ postgres (단일 인스턴스, Fly Postgres)
 
 | 항목 | 내용 | 영향 범위 | 관련 spec |
 |---|---|---|---|
-| 13개 도메인 모듈 빈 스텁 | auth·user·seller·product·inventory 외 13개 모듈(cart~admin)은 4계층 골격만 존재 | 해당 모듈 | Stage 3 |
-| inventory 재고입고 소유권 미검증 (SEC-002/IDOR) | `POST /inventory/:variantId/stock-in` 이 APPROVED 여부만 확인, variantId→product→seller 소유권 미검증 → 임의 APPROVED 판매자가 타 상품 재고·상태 조작 가능 | `inventory`·`product` | GAP-005 — 003 거래 spec에서 수정 |
+| 10개 도메인 모듈 빈 스텁 | 8개 실구현(auth~payment) 외 10개 모듈(coupon·review·shipping·settlement·search·notification·file·banner·stats·admin)은 4계층 골격만 존재 | 해당 모듈 | Stage 3+ |
+| ~~inventory 재고입고 소유권 미검증 (SEC-002)~~ | **RESOLVED (003-commerce)** — `assertSellerOwnsVariant`(variantId→product→seller 소유권 검증)를 inventory stock-in·getStock 에 적용 | `inventory`·`product` | 003-commerce FR-050/051 |
 | cross-schema plain String 참조 (P-001·ADR-001) | users·products 스키마 간 FK 없음. Wishlist/ProductView.productId·Product.sellerId·InventoryLog.variantId 등 plain String 참조 → DB 수준 참조 무결성 없음(의도적), 삭제 시 고아 레코드 가능 | users·products 스키마 | 002-catalog |
 | pino-pretty 미설치 | 로컬 `NODE_ENV=development` 에서 pino-pretty transport 모듈 오류. e2e 는 `NODE_ENV=production`(JSON 로그) 우회 중. 해소: `pnpm add -D pino-pretty --filter backend` | `apps/backend` 로컬 dev 로그 | 001-skeleton-bootstrap |
 | 검색 성능 한계 | PostgreSQL tsvector/pg_trgm은 OpenSearch 대비 성능·기능 열위. 트래픽 증가 시 Meilisearch 도입 필요 | `search` 모듈 | — |

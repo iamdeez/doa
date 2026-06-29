@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { forwardRef, Module } from '@nestjs/common';
 import { AuthSharedModule } from '../../shared/auth/auth-shared.module';
 import { InventoryModule } from '../inventory/inventory.module';
 import { SellerModule } from '../seller/seller.module';
@@ -12,8 +12,9 @@ import { ProductRepository } from './product.repository';
 import { ProductService } from './product.service';
 
 @Module({
-  imports: [SellerModule, InventoryModule, AuthSharedModule],
+  imports: [SellerModule, forwardRef(() => InventoryModule), AuthSharedModule],
   controllers: [ProductController, CategoriesController, SellerProductController],
   providers: [ProductService, ProductRepository, ProductEventsHandler],
+  exports: [ProductService],
 })
 export class ProductModule {}

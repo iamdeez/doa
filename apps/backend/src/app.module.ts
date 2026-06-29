@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { EventEmitterModule } from '@nestjs/event-emitter';
 import { LoggerModule } from 'nestjs-pino';
+import { PgBossModule } from './infrastructure/pgboss/pgboss.module';
 import { HealthModule } from './health/health.module';
 import { AdminModule } from './modules/admin/admin.module';
 import { AuthModule } from './modules/auth/auth.module';
@@ -37,6 +38,7 @@ import { PrismaModule } from './shared/prisma/prisma.module';
     }),
     EventEmitterModule.forRoot(),
     PrismaModule,
+    PgBossModule,
 
     // Core
     HealthModule,

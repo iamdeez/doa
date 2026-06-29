@@ -137,6 +137,8 @@ enum InventoryLogType {
   STOCK_IN
   DECREASE
   INIT
+  /// 주문 취소 시 재고 복구 (FR-023, ADR-004)
+  RESTORE
 
   @@schema("products")
 }
@@ -235,4 +237,206 @@ model InventoryLog {
   @@index([variantId, createdAt(sort: Desc)])
   @@map("inventory_logs")
   @@schema("products")
+}
+
+// ============================================================
+// commerce 스키마 — 003-commerce 실체화 테이블
+// ============================================================
+
+/// 장바구니. 사용자당 1건 (userId @unique, FR-005).
+/// userId cross-schema plain String — users.users.id 참조하지만 FK 미선언 (P-001 경계)
+model Cart {
+  id        String   @id @default(cuid())
+  /// cross-schema plain String — users.users.id 참조하지만 FK 미선언 (P-001 경계)
+  userId    String   @unique
+  /// 장바구니 아이템 배열 JSON (variantId·productId·sellerId·quantity·unitPrice·optionName·optionValue·productTitle·sku)
+  items     Json     @default("[]")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("carts")
+  @@schema("commerce")
+}
+
+// ============================================================
+// orders 스키마 — 003-commerce 실체화 테이블
+// ============================================================
+
+/// 주문 상태 enum. 전이: pending → confirmed → preparing → shipped → delivered → completed
+/// pending/confirmed → cancelled (FR-020, context.md §3.3)
+enum OrderStatus {
+  pending
+  confirmed
+  preparing
+  shipped
+  delivered
+  completed
+  cancelled
+
+  @@schema("orders")
+}
+
+/// 주문 이벤트 행위자 유형 (FR-028)
+enum ActorType {
+  CUSTOMER
+  SELLER
+  ADMIN
+  /// 시스템 행위자 — pg-boss, auto-confirm (FR-027), outbox relay
+  SYSTEM
+
+  @@schema("orders")
+}
+
+/// 주문. userId cross-schema plain String (P-001).
+/// totalAmount/discountAmount Decimal(12,2) — 금전 필드 부동소수점 금지 (P-005, NFR-005).
+model Order {
+  id                      String      @id @default(cuid())
+  /// cross-schema plain String — users.users.id 참조하지만 FK 미선언 (P-001 경계)
+  userId                  String
+  status                  OrderStatus @default(pending)
+  /// 금전 필드 — 부동소수점 금지 (P-005, NFR-005)
+  totalAmount             Decimal     @db.Decimal(12, 2)
+  /// 금전 필드 — 부동소수점 금지 (P-005, NFR-005)
+  discountAmount          Decimal     @default(0) @db.Decimal(12, 2)
+  /// 주문 시점 배송지 스냅샷 (FR-016). 수정 불가.
+  shippingAddressSnapshot Json
+  /// 배송 완료 일시 — 자동 구매 확정 기준 (FR-027)
+  deliveredAt             DateTime?
+  createdAt               DateTime    @default(now())
+  items                   OrderItem[]
+  events                  OrderEvent[]
+
+  /// cursor 페이지네이션: userId·createdAt DESC·id DESC (FR-018, NFR-001)
+  @@index([userId, createdAt(sort: Desc), id(sort: Desc)])
+  @@map("orders")
+  @@schema("orders")
+}
+
+/// 주문 항목. orderId 동일 스키마 FK. variantId/productId/sellerId cross-schema plain String (P-001).
+/// unitPrice Decimal(12,2) — 주문 시점 단가 스냅샷 (P-005).
+model OrderItem {
+  id           String  @id @default(cuid())
+  orderId      String
+  /// cross-schema plain String — products.variants.id 참조하지만 FK 미선언 (P-001 경계)
+  variantId    String
+  /// cross-schema plain String — products.products.id 참조하지만 FK 미선언 (P-001 경계)
+  productId    String
+  /// cross-schema plain String — users.sellers.id 참조하지만 FK 미선언 (P-001 경계). 판매자 수주 목록/권한 검증 (FR-024, FR-025).
+  sellerId     String
+  quantity     Int
+  /// 금전 필드 — 주문 시점 단가 스냅샷, 부동소수점 금지 (P-005, NFR-005)
+  unitPrice    Decimal @db.Decimal(12, 2)
+  optionName   String
+  optionValue  String
+  productTitle String
+  sku          String
+  order        Order   @relation(fields: [orderId], references: [id], onDelete: Restrict)
+
+  @@index([orderId])
+  @@index([sellerId])
+  @@map("order_items")
+  @@schema("orders")
+}
+
+/// 주문 이벤트 이력. append-only — UPDATE/DELETE 미사용 (FR-028, SC-032).
+/// fromStatus/toStatus 는 String — enum 변경 시 이력 스키마 연동 부담 방지 (설계 결정).
+model OrderEvent {
+  id         String    @id @default(cuid())
+  orderId    String
+  fromStatus String?
+  toStatus   String
+  actorType  ActorType
+  /// SYSTEM 행위자 시 NULL 허용
+  actorId    String?
+  createdAt  DateTime  @default(now())
+  order      Order     @relation(fields: [orderId], references: [id], onDelete: Restrict)
+
+  @@index([orderId, createdAt(sort: Desc)])
+  @@map("order_events")
+  @@schema("orders")
+}
+
+// ============================================================
+// payments 스키마 — 003-commerce 실체화 테이블
+// ============================================================
+
+/// 결제 상태 enum. 전이: pending → completed | failed
+/// completed → refund_pending → refunded (context.md §3.3)
+/// refund_pending: 비동기 PG 연동 대비 — 현재 spec 에서는 completed → refunded 직행
+enum PaymentStatus {
+  pending
+  completed
+  failed
+  /// 환불 처리 중 (context.md §3.3 목표 상태 — 향후 비동기 PG 연동 시 활성화)
+  refund_pending
+  refunded
+
+  @@schema("payments")
+}
+
+/// 결제. orderId @unique — order당 결제 1건. cross-schema plain String (P-001).
+/// idempotencyKey @unique — 클라이언트 UUID v4 멱등성 guard (FR-031/035, ADR-006).
+/// amount Decimal(12,2) — P-005.
+model Payment {
+  id              String        @id @default(cuid())
+  /// cross-schema plain String — orders.orders.id 참조하지만 FK 미선언 (P-001 경계). order당 결제 1건.
+  orderId         String        @unique
+  /// cross-schema plain String — users.users.id 참조하지만 FK 미선언 (P-001 경계)
+  userId          String
+  /// 금전 필드 — 부동소수점 금지 (P-005, NFR-005)
+  amount          Decimal       @db.Decimal(12, 2)
+  status          PaymentStatus @default(pending)
+  /// 클라이언트 UUID v4 — 멱등성 race guard (FR-031/035, ADR-006). 동일 key 재요청 시 기존 결과 반환.
+  idempotencyKey  String        @unique
+  pgTransactionId String?
+  /// 결제 실패 사유 (FR-036)
+  failureReason   String?
+  createdAt       DateTime      @default(now())
+  refunds         Refund[]
+  outbox          PaymentOutbox[]
+
+  @@map("payments")
+  @@schema("payments")
+}
+
+/// 환불. paymentId 동일 스키마 FK.
+/// idempotencyKey @unique — 서버 생성 "refund:{orderId}" 이중환불 guard (FR-038, ADR-008).
+/// amount Decimal(12,2) — P-005.
+model Refund {
+  id             String   @id @default(cuid())
+  paymentId      String
+  /// 금전 필드 — 부동소수점 금지 (P-005, NFR-005)
+  amount         Decimal  @db.Decimal(12, 2)
+  /// 서버 생성 "refund:{orderId}" — 이중환불 guard (FR-038, ADR-008)
+  idempotencyKey String   @unique
+  status         String
+  pgRefundId     String?
+  createdAt      DateTime @default(now())
+  payment        Payment  @relation(fields: [paymentId], references: [id], onDelete: Restrict)
+
+  @@index([paymentId])
+  @@map("refunds")
+  @@schema("payments")
+}
+
+/// 결제 outbox. 결제/환불과 동일 트랜잭션 내 기록 — at-least-once 보장 (FR-033, FR-037, NFR-008, ADR-007).
+/// pg-boss OutboxRelay 가 pending 행 폴링 → OrderService.markConfirmed(orderId) → processed 갱신.
+model PaymentOutbox {
+  id          String    @id @default(cuid())
+  paymentId   String
+  /// 'payment.completed' | 'payment.refunded'
+  eventType   String
+  /// {orderId, ...} — OutboxRelay 처리에 필요한 컨텍스트
+  payload     Json
+  /// 'pending' | 'processed'
+  status      String    @default("pending")
+  createdAt   DateTime  @default(now())
+  processedAt DateTime?
+  payment     Payment   @relation(fields: [paymentId], references: [id], onDelete: Restrict)
+
+  /// OutboxRelay 폴링: WHERE status='pending' ORDER BY createdAt ASC (ADR-007)
+  @@index([status, createdAt(sort: Asc)])
+  @@index([paymentId])
+  @@map("payment_outbox")
+  @@schema("payments")
 }
