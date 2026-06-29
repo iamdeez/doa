@@ -14,9 +14,9 @@ final _reviewDate = DateFormat('yyyy.MM.dd', 'ko_KR');
 
 final productDetailProvider =
     FutureProvider.autoDispose.family<Map<String, dynamic>, String>((ref, id) async {
-  final dio = ref.read(dioProvider);
-  final res = await dio.get<Map<String, dynamic>>('/products/$id',
-      options: Options(extra: {'anonymous': true}));
+  // anonymous 미지정 → 토큰 부착. 백엔드 OptionalJwtAuthGuard 가 인증 시
+  // product.viewed 이벤트로 최근 본 상품을 기록한다(FR-009).
+  final res = await ref.read(dioProvider).get<Map<String, dynamic>>('/products/$id');
   return res.data!;
 });
 
