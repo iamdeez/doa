@@ -7,11 +7,13 @@ import {
   Post,
   UseGuards,
 } from '@nestjs/common';
+import { ApiOkResponse } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../shared/auth/jwt-auth.guard';
 import { AdminGuard } from '../../shared/auth/admin.guard';
 import { CurrentUser } from '../../shared/auth/current-user.decorator';
 import { AuthenticatedUser } from '../../shared/auth/jwt.strategy';
 import { CreateSettlementDto } from './dto/create-settlement.dto';
+import { SettlementResponse } from './dto/settlement-response.dto';
 import { SettlementService } from './settlement.service';
 
 // ── 판매자/관리자 정산 API ──────────────────────────────────────────
@@ -35,6 +37,7 @@ export class SettlementController {
 
   /** GET /settlements — 판매자 본인 정산 내역 (본인만) */
   @Get()
+  @ApiOkResponse({ type: [SettlementResponse] })
   async listMySettlements(@CurrentUser() user: AuthenticatedUser) {
     return this.settlementService.listMySettlements(user.userId);
   }
@@ -49,6 +52,7 @@ export class AdminSettlementController {
 
   /** GET /admin/settlements — 전체 정산 내역 (관리자) */
   @Get()
+  @ApiOkResponse({ type: [SettlementResponse] })
   async listAll() {
     return this.settlementService.listAll();
   }

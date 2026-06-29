@@ -1530,9 +1530,27 @@ export interface components {
         RefreshDto: {
             refreshToken: string;
         };
+        UserProfileResponse: {
+            id: string;
+            email: string;
+            name?: string | null;
+            phone?: string | null;
+        };
         UpdateProfileDto: {
             name?: string;
             phone?: string;
+        };
+        AddressResponse: {
+            id: string;
+            userId: string;
+            recipientName: string;
+            phone: string;
+            zipCode: string;
+            address1: string;
+            address2?: string | null;
+            isDefault: boolean;
+            /** Format: date-time */
+            createdAt: string;
         };
         CreateAddressDto: {
             recipientName: string;
@@ -1549,8 +1567,24 @@ export interface components {
             address1?: string;
             address2?: string | null;
         };
+        WishlistResponse: {
+            id: string;
+            userId: string;
+            /** @description cross-schema plain String — products.products.id (P-001) */
+            productId: string;
+            /** Format: date-time */
+            createdAt: string;
+        };
         AddWishlistDto: {
             productId: string;
+        };
+        RecentViewResponse: {
+            id: string;
+            userId: string;
+            /** @description cross-schema plain String — products.products.id (P-001) */
+            productId: string;
+            /** Format: date-time */
+            viewedAt: string;
         };
         CreateShipmentDto: {
             /** @description 송장을 등록할 주문 ID */
@@ -1600,6 +1634,34 @@ export interface components {
             periodStart: string;
             /** @description 정산 기간 종료 (ISO 8601) */
             periodEnd: string;
+        };
+        SettlementResponse: {
+            id: string;
+            /** @description cross-schema plain String — users.sellers.id (P-001) */
+            sellerId: string;
+            /** Format: date-time */
+            periodStart: string;
+            /** Format: date-time */
+            periodEnd: string;
+            /**
+             * @description 금전 — 정산 기간 총 매출 (P-005)
+             * @example 1000000.00
+             */
+            totalSales: string;
+            /**
+             * @description 금전 — 플랫폼 수수료 (P-005)
+             * @example 100000.00
+             */
+            commission: string;
+            /**
+             * @description 금전 — 실 지급액 (P-005)
+             * @example 900000.00
+             */
+            payoutAmount: string;
+            /** @enum {string} */
+            status: "pending" | "completed";
+            /** Format: date-time */
+            createdAt: string;
         };
         CreateReviewDto: {
             orderItemId: string;
@@ -2720,7 +2782,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": Record<string, never>;
+                    "application/json": components["schemas"]["UserProfileResponse"];
                 };
             };
         };
@@ -2743,7 +2805,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": Record<string, never>;
+                    "application/json": components["schemas"]["UserProfileResponse"];
                 };
             };
         };
@@ -2762,7 +2824,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": Record<string, never>[];
+                    "application/json": components["schemas"]["AddressResponse"][];
                 };
             };
         };
@@ -2780,12 +2842,12 @@ export interface operations {
             };
         };
         responses: {
-            201: {
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": Record<string, never>;
+                    "application/json": components["schemas"]["AddressResponse"];
                 };
             };
         };
@@ -2829,7 +2891,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": Record<string, never>;
+                    "application/json": components["schemas"]["AddressResponse"];
                 };
             };
         };
@@ -2867,7 +2929,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": Record<string, never>[];
+                    "application/json": components["schemas"]["WishlistResponse"][];
                 };
             };
         };
@@ -2885,12 +2947,12 @@ export interface operations {
             };
         };
         responses: {
-            201: {
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": Record<string, never>;
+                    "application/json": components["schemas"]["WishlistResponse"];
                 };
             };
         };
@@ -2928,7 +2990,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": Record<string, never>[];
+                    "application/json": components["schemas"]["RecentViewResponse"][];
                 };
             };
         };
@@ -3037,7 +3099,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["SettlementResponse"][];
+                };
             };
         };
     };
@@ -3077,7 +3141,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["SettlementResponse"][];
+                };
             };
         };
     };

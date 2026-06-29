@@ -1425,7 +1425,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object"
+                  "$ref": "#/components/schemas/UserProfileResponse"
                 }
               }
             }
@@ -1454,7 +1454,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object"
+                  "$ref": "#/components/schemas/UserProfileResponse"
                 }
               }
             }
@@ -1477,7 +1477,7 @@
                 "schema": {
                   "type": "array",
                   "items": {
-                    "type": "object"
+                    "$ref": "#/components/schemas/AddressResponse"
                   }
                 }
               }
@@ -1502,12 +1502,12 @@
           }
         },
         "responses": {
-          "201": {
+          "200": {
             "description": "",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object"
+                  "$ref": "#/components/schemas/AddressResponse"
                 }
               }
             }
@@ -1547,7 +1547,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object"
+                  "$ref": "#/components/schemas/AddressResponse"
                 }
               }
             }
@@ -1614,7 +1614,7 @@
                 "schema": {
                   "type": "array",
                   "items": {
-                    "type": "object"
+                    "$ref": "#/components/schemas/WishlistResponse"
                   }
                 }
               }
@@ -1639,12 +1639,12 @@
           }
         },
         "responses": {
-          "201": {
+          "200": {
             "description": "",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object"
+                  "$ref": "#/components/schemas/WishlistResponse"
                 }
               }
             }
@@ -1690,7 +1690,7 @@
                 "schema": {
                   "type": "array",
                   "items": {
-                    "type": "object"
+                    "$ref": "#/components/schemas/RecentViewResponse"
                   }
                 }
               }
@@ -1874,7 +1874,17 @@
         "parameters": [],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/SettlementResponse"
+                  }
+                }
+              }
+            }
           }
         },
         "summary": "GET /settlements — 판매자 본인 정산 내역 (본인만)",
@@ -1889,7 +1899,17 @@
         "parameters": [],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/SettlementResponse"
+                  }
+                }
+              }
+            }
           }
         },
         "summary": "GET /admin/settlements — 전체 정산 내역 (관리자)",
@@ -3628,6 +3648,29 @@
           "refreshToken"
         ]
       },
+      "UserProfileResponse": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string",
+            "nullable": true
+          },
+          "phone": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "id",
+          "email"
+        ]
+      },
       "UpdateProfileDto": {
         "type": "object",
         "properties": {
@@ -3638,6 +3681,50 @@
             "type": "string"
           }
         }
+      },
+      "AddressResponse": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "userId": {
+            "type": "string"
+          },
+          "recipientName": {
+            "type": "string"
+          },
+          "phone": {
+            "type": "string"
+          },
+          "zipCode": {
+            "type": "string"
+          },
+          "address1": {
+            "type": "string"
+          },
+          "address2": {
+            "type": "string",
+            "nullable": true
+          },
+          "isDefault": {
+            "type": "boolean"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "userId",
+          "recipientName",
+          "phone",
+          "zipCode",
+          "address1",
+          "isDefault",
+          "createdAt"
+        ]
       },
       "CreateAddressDto": {
         "type": "object",
@@ -3689,6 +3776,31 @@
           }
         }
       },
+      "WishlistResponse": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "userId": {
+            "type": "string"
+          },
+          "productId": {
+            "type": "string",
+            "description": "cross-schema plain String — products.products.id (P-001)"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "userId",
+          "productId",
+          "createdAt"
+        ]
+      },
       "AddWishlistDto": {
         "type": "object",
         "properties": {
@@ -3698,6 +3810,31 @@
         },
         "required": [
           "productId"
+        ]
+      },
+      "RecentViewResponse": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "userId": {
+            "type": "string"
+          },
+          "productId": {
+            "type": "string",
+            "description": "cross-schema plain String — products.products.id (P-001)"
+          },
+          "viewedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "userId",
+          "productId",
+          "viewedAt"
         ]
       },
       "CreateShipmentDto": {
@@ -3847,6 +3984,63 @@
           "sellerId",
           "periodStart",
           "periodEnd"
+        ]
+      },
+      "SettlementResponse": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "sellerId": {
+            "type": "string",
+            "description": "cross-schema plain String — users.sellers.id (P-001)"
+          },
+          "periodStart": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "periodEnd": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "totalSales": {
+            "type": "string",
+            "example": "1000000.00",
+            "description": "금전 — 정산 기간 총 매출 (P-005)"
+          },
+          "commission": {
+            "type": "string",
+            "example": "100000.00",
+            "description": "금전 — 플랫폼 수수료 (P-005)"
+          },
+          "payoutAmount": {
+            "type": "string",
+            "example": "900000.00",
+            "description": "금전 — 실 지급액 (P-005)"
+          },
+          "status": {
+            "enum": [
+              "pending",
+              "completed"
+            ],
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "sellerId",
+          "periodStart",
+          "periodEnd",
+          "totalSales",
+          "commission",
+          "payoutAmount",
+          "status",
+          "createdAt"
         ]
       },
       "CreateReviewDto": {
