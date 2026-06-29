@@ -1,3 +1,28 @@
+## [011-file-security] 구현 완료
+
+> base `cfa787c`(010 SDD 문서 커밋) → `88de003`(011 완료). 변경 라인은 `git diff cfa787c 88de003 -- apps/backend`로 재생성. 마이그레이션 없음(스키마 변경 0 — FileAsset 기존 status/size 컬럼 재사용).
+
+**변경 파일**:
+- `apps/backend/src/modules/file/file.service.ts`: `getById` 시그니처 `(id)` → `(userId, id)` + 소유권 검증(`findById → null` 404, `ownerId !== userId` → 403 ForbiddenException, 본인 메타 반환 — 메타 IDOR 차단). `presign` 진입부에서 `ALLOWED_CONTENT_TYPES`(image/jpeg·png·webp·gif) allowlist 검증(외 contentType → 400, create 이전·repo 미호출). `confirm(userId, id, size)` 신규 — size 검증(`!Number.isInteger || <=0 || > MAX_FILE_SIZE_BYTES` → 400, findById 이전) → 미존재 404 → 타인 403 → 이미 UPLOADED 멱등(no-op) → PENDING 이면 `updateStatus(id, UPLOADED, size)`. `ForbiddenException`·`BadRequestException` import 추가.
+- `apps/backend/src/modules/file/file.constants.ts`(신규): `ALLOWED_CONTENT_TYPES`(이미지 4종)·`MAX_FILE_SIZE_BYTES`(10MiB).
+- `apps/backend/src/modules/file/dto/confirm-file.dto.ts`(신규): `ConfirmFileDto { @IsInt @Min(1) size }`.
+- `apps/backend/src/modules/file/file.repository.ts`: `updateStatus(id, status, size)` 신규(files.files 전용 — `fileAsset.update`).
+- `apps/backend/src/modules/file/file.controller.ts`: `GET /files/:id`(소유자 전용 — `@CurrentUser().userId` 주입) + `POST /files/:id/confirm`(신규 라우트). FileController 기존 `@UseGuards(JwtAuthGuard)`.
+- `apps/backend/src/modules/file/file.service.spec.ts`: 단위 테스트 8건 추가(7→15) — describe `presign` 1(allowlist 거부) + `getById` 2(본인 반환·타인 403) + `confirm (GAP-006-02)` 6(전이·타인·미존재·멱등·상한·비양수).
+
+**검증**: tsc 0 / unit 25 suites·253 PASS(010 대비 +8 = presign 1 + getById 2 + confirm 6, 회귀 0) / e2e+static 16 suites·84 PASS(변화 없음 — 011 전용 신규 e2e/static 없음). schema·마이그레이션 변경 0(FileAsset 기존 status/size 재사용). `getById` breaking 시그니처 잔여 참조 0(controller 1건 갱신).
+
+**해결**: **SEC-FIND-006-01(파일 메타 IDOR, Low) / SEC-FIND-006-02(presign 입력 무검증, Low) / GAP-006-02(confirm 부재, Low) 완전 해결** — 메타 소유자 전용 조회(`getById` 소유권 403/404) + presign MIME allowlist(비허용 → 400·repo 미호출) + 업로드 confirm(PENDING→UPLOADED 전이·size 기록·멱등). 임의 인증 사용자가 타인 파일 메타를 조회하거나 비허용 콘텐츠를 presign 하는 경로, 고아 PENDING 누적 경로 차단. 006-search-notification-file/security/security-report.md(SEC-FIND-006-01·02)·gaps.md(GAP-006-02·03·04)·test/coverage-gap.md 의 해당 항목을 RESOLVED(011)로 갱신.
+
+**후속 작업 시 주의사항**:
+- **메타 엔드포인트 소유자 전용 = 공개 표시와 분리**: `GET /files/:id` 는 소유자 전용으로 막혔으나, 상품·리뷰 이미지의 공개 표시는 presign 응답·도메인 레코드에 저장된 `publicUrl` 을 직접 사용하는 경로이지 메타 엔드포인트를 거치지 않는다. 향후 비공개 purpose 가 필요해지면 현재 일괄 소유자 전용 모델 위에서 분기를 추가한다.
+- **confirm size 는 클라이언트 신뢰 기반(GAP-011-01, Low)**: confirm 의 `size` 상한(`MAX_FILE_SIZE_BYTES`) 검증은 클라이언트 보고값 기반이며 실제 업로드 크기를 교차검증하지 않는다(stub 무네트워크). 실제 R2 전환 시 confirm 시점 객체 HEAD·presign content-length-range 로 교차검증 필요(범위 외 — gaps.md·coverage-gap.md).
+- **`getById` breaking 시그니처**: `getById(id)` → `getById(userId, id)`. 향후 file 메타를 조회하는 신규 호출 측을 추가하면 반드시 인증 사용자 id 를 전달해야 소유권 검증이 유지된다(현재 호출 측은 FileController 단일).
+- **confirm 검증 순서 보존**: size 검증을 `findById` 보다 먼저 수행(SC-009 의 findById 미호출 단언으로 고정). 멱등 분기(이미 UPLOADED → updateStatus 미호출)는 최초 size 를 보존한다. 향후 confirm 로직 변경 시 이 순서·멱등을 유지(SC-005~010 단언으로 회귀 탐지).
+- **메타 IDOR·confirm e2e 부재**: HTTP `GET /files/:id`(타인 403)·`POST /files/:id/confirm`(200) end-to-end 통합 테스트는 없다(service 단위 검증으로 갈음 — coverage-gap.md). 후속 보강 권장.
+
+---
+
 ## [010-coupon-discount-validation] 구현 완료
 
 > base `6fe1588`(009 완료) → `2664da3`(010 완료). 변경 라인은 `git diff 6fe1588 2664da3 -- apps/backend`로 재생성. 마이그레이션 없음(스키마 변경 0 — Coupon 테이블 기존 Decimal 필드 재사용).

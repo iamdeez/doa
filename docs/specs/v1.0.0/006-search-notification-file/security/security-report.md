@@ -87,7 +87,7 @@
 | **공격자 요건** | 임의 인증 사용자(JWT 보유). 파일 id 추정·열거 필요. |
 | **실질 위험** | 낮음 — 현재 모든 파일이 public URL 모델(`publicUrl` 반환)이라 메타 노출이 모델과 정합한다. 다만 비공개 purpose(예: 민감 문서) 도입 시 메타 스코핑 부재가 정보 노출로 이어질 수 있다. |
 | **수정 방향** | 비공개 purpose 도입 시 `getById` 에 `file.ownerId === userId` 검증 추가 또는 공개/비공개 구분(공개 purpose 만 무인가 메타 허용). |
-| **상태** | OPEN (gaps.md 교차 기재, 후속 spec 위임) |
+| **상태** | **RESOLVED (011-file-security, 커밋 88de003)** — `getById(userId, id)` 가 `file.ownerId !== userId` → 403 ForbiddenException, 미존재 → 404 로 메타 IDOR 차단(공개/비공개 분기 대신 메타 엔드포인트 일괄 소유자 전용). 해결 검증은 `docs/specs/v1.0.0/011-file-security/security/security-report.md` 참조. |
 
 ### SEC-FIND-006-02 — Low
 
@@ -102,7 +102,7 @@
 | **공격자 요건** | 임의 인증 사용자. 현재 stub 모델(무네트워크, 실제 업로드 미발생)에서는 표면 제한적. |
 | **실질 위험** | 낮음 — 현재 `StubFileStorage` 가 실제 업로드를 수행하지 않아 악용 표면이 제한적이다. 실제 R2 presign 전환 시 content-type 바인딩·크기 제한이 필요하다. |
 | **수정 방향** | 실제 R2 전환 시 (1) contentType allowlist 검증, (2) presigned URL 에 content-type·크기 제한 바인딩, (3) 비허용 입력 거부. |
-| **상태** | OPEN (gaps.md 교차 기재, 실제 R2 전환 spec 위임) |
+| **상태** | **RESOLVED (011-file-security, 커밋 88de003)** — `presign` 이 `ALLOWED_CONTENT_TYPES`(image/jpeg·png·webp·gif) allowlist 외 contentType 을 400 BadRequest 로 거부(create 이전·repo 미호출), 크기 상한은 confirm 단계 `MAX_FILE_SIZE_BYTES`(10MiB)로 검증. 잔여: presign 시점 content-type 바인딩·실제 업로드 크기 교차검증은 R2 실연동 후속(011 gaps.md GAP-011-01, Low 권고). 해결 검증은 `docs/specs/v1.0.0/011-file-security/security/security-report.md` 참조. |
 
 ---
 
@@ -183,4 +183,6 @@ presign 입력 제약 — 실제 R2 presign 전환 시 처리 권장:
 - **알림 이벤트 연동(GAP-006-01)**: `NotificationService.create()` 가 진입점만 제공하고 도메인 이벤트
   핸들러 연동이 미구현이다. 보안 영향은 없으나 기능 완결성 차원에서 후속 연동 권장.
 - **파일 confirm·고아 PENDING 정리(GAP-006-02)**: PENDING→UPLOADED 전이 부재로 고아 레코드 누적
-  가능. 보안 영향은 제한적이나 운영상 정리 정책(TTL 배치) 검토 권장.
+  가능. 보안 영향은 제한적이나 운영상 정리 정책(TTL 배치) 검토 권장. → **RESOLVED (011-file-security,
+  커밋 88de003)** — `POST /files/:id/confirm`(소유자 전용, 멱등)이 PENDING→UPLOADED 전이 + size 기록으로
+  정상 전이 경로를 확보. 잔여 고아 PENDING(미confirm) 의 TTL 배치 정리는 운영 정책 후속.

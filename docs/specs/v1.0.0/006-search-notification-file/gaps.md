@@ -36,7 +36,7 @@
 - **내용**: presign 시 생성되는 `FileAsset` 은 항상 `status=PENDING`·`size=0` 이며, 이를 `UPLOADED` 로 전이하거나 실제 size 를 기록하는 엔드포인트·메서드가 없다. 클라이언트가 presigned URL 로 직접 PUT 한 후 서버에 업로드 완료를 알릴 경로가 없어 고아 PENDING 레코드가 누적될 수 있다.
 - **수정 방향**: `POST /files/:id/confirm`(또는 스토리지 콜백)으로 `PENDING → UPLOADED` 전이 + size 기록. 고아 PENDING 정리 정책(TTL 배치) 검토.
 - **영향**: 낮음 — 운영상 PENDING 정리로 완화 가능. 본 spec 범위 외.
-- **상태**: OPEN — 후속 spec 위임.
+- **상태**: **RESOLVED (011-file-security, 커밋 88de003)** — `POST /files/:id/confirm`(소유자 전용)이 `confirm(userId, id, size)` 로 PENDING→UPLOADED 전이 + 실제 size 기록(이미 UPLOADED 면 멱등, size 범위 위반 400). 고아 PENDING 누적 해소 경로 확보. 잔여 미confirm PENDING 의 TTL 배치 정리는 운영 정책 후속. 해결 상세는 `docs/specs/v1.0.0/011-file-security/` 참조.
 
 ## GAP-006-03 (SEC-FIND-006-01 교차기재)
 
@@ -46,7 +46,7 @@
 - **내용**: `GET /files/:id` 가 소유권/인가 검증 없이 임의 인증 사용자에게 파일 메타(`key`·`url`·`ownerId`·`contentType`)를 노출한다. `JwtAuthGuard` 만 적용되어 인증된 사용자라면 타인 소유 파일의 메타를 조회할 수 있다.
 - **수정 방향**: 비공개 purpose 도입 시 `getById` 에 `file.ownerId === userId` 검증 추가 또는 공개/비공개 구분(공개 purpose 만 무인가 메타 허용).
 - **영향**: 낮음 — 현재 모든 파일이 public URL 모델이라 메타 노출과 정합. 비공개 purpose 도입 시 정보 노출 위험. OWASP A01.
-- **상태**: OPEN — security-report.md SEC-FIND-006-01 과 동일 사안. 후속 spec 위임.
+- **상태**: **RESOLVED (011-file-security, 커밋 88de003)** — SEC-FIND-006-01 과 동일 사안. `getById(userId, id)` 가 `ownerId !== userId` → 403, 미존재 → 404 로 메타 IDOR 차단(메타 엔드포인트 일괄 소유자 전용). 006/security/security-report.md SEC-FIND-006-01 상태와 동기화.
 
 ## GAP-006-04 (SEC-FIND-006-02 교차기재)
 
@@ -56,4 +56,4 @@
 - **내용**: presign 이 클라이언트 `contentType` 을 무검증 수용한다(허용 MIME allowlist 부재). 파일 크기 상한이 적용되지 않으며 `size=0` placeholder 로 레코드를 생성한다. 실제 R2 presign 전환 시 임의 content-type·과대 파일 업로드 표면이 된다.
 - **수정 방향**: 실제 R2 전환 시 (1) contentType allowlist 검증, (2) presigned URL 에 content-type·크기 제한 바인딩, (3) 비허용 입력 거부.
 - **영향**: 낮음 — 현재 stub 모델(무네트워크, 실제 업로드 미발생)에서 표면 제한적. 실제 R2 전환 시 처리 필요. OWASP A04.
-- **상태**: OPEN — security-report.md SEC-FIND-006-02 와 동일 사안. 실제 R2 전환 spec 위임.
+- **상태**: **RESOLVED (011-file-security, 커밋 88de003)** — SEC-FIND-006-02 와 동일 사안. `presign` 이 `ALLOWED_CONTENT_TYPES`(이미지 4종) allowlist 외 contentType 을 400 으로 거부(repo 미호출), 크기 상한은 confirm 단계 `MAX_FILE_SIZE_BYTES`(10MiB). 잔여: presign 시점 content-type 바인딩·실제 크기 교차검증은 R2 실연동 후속(011 GAP-011-01, Low). 006/security/security-report.md SEC-FIND-006-02 상태와 동기화.

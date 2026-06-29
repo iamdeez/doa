@@ -26,9 +26,9 @@
 | 항목 | 미커버 시나리오 | 카테고리 | 검증 방법 | 담당 | 비고 |
 |---|---|---|---|---|---|
 | 알림 도메인 이벤트 연동 | 주문·배송·정산·리뷰 이벤트 → `create()` → 사용자 조회 통합 흐름 | (3) 기능 미구현 | 후속 spec: 이벤트 핸들러 연동 + 통합 시나리오 테스트 | 후속 spec | **RESOLVED — 009-notification-events 에서 해결**(GAP-006-01). `NotificationEventsHandler`(@OnEvent 4종)가 이벤트 구독→알림 생성. 단, 이벤트→DB→조회 end-to-end 통합 테스트는 009 에서도 후속 보강 권고로 남김(009 coverage-gap.md) |
-| 파일 PENDING→UPLOADED 확정(confirm) | 업로드 후 상태 전이·size 기록 | (3) 기능 미구현 | 후속 spec: confirm 엔드포인트 + 상태 전이 테스트 | 후속 spec | Low (GAP-006-02) |
-| `GET /files/:id` 소유권 검증 | 비공개 파일 메타 타인 노출 차단 | (3) 기능 미구현 | 비공개 purpose 도입 시 ownerId 검증 + 403 테스트 | 후속 spec | Low (SEC-FIND-006-01) |
-| presign contentType allowlist·크기 상한 | 비허용 MIME·과대 크기 업로드 거부 | (3) 기능 미구현 | 실제 R2 전환 시 content-type 바인딩·크기 제한 + 거부 테스트 | 후속 spec | Low (SEC-FIND-006-02) |
+| 파일 PENDING→UPLOADED 확정(confirm) | 업로드 후 상태 전이·size 기록 | (3) 기능 미구현 | 후속 spec: confirm 엔드포인트 + 상태 전이 테스트 | 후속 spec | **RESOLVED — 011-file-security 에서 해결**(GAP-006-02). `POST /files/:id/confirm` + `confirm` 단위 테스트(전이·멱등·size, SC-005~010). 011 test/coverage-gap.md 참조 |
+| `GET /files/:id` 소유권 검증 | 비공개 파일 메타 타인 노출 차단 | (3) 기능 미구현 | 비공개 purpose 도입 시 ownerId 검증 + 403 테스트 | 후속 spec | **RESOLVED — 011-file-security 에서 해결**(SEC-FIND-006-01). `getById(userId, id)` 소유권 검증 + 403 단위 테스트(SC-001). 메타 엔드포인트 일괄 소유자 전용 |
+| presign contentType allowlist·크기 상한 | 비허용 MIME·과대 크기 업로드 거부 | (3) 기능 미구현 | 실제 R2 전환 시 content-type 바인딩·크기 제한 + 거부 테스트 | 후속 spec | **RESOLVED — 011-file-security 에서 해결**(SEC-FIND-006-02). presign `ALLOWED_CONTENT_TYPES` allowlist(400·repo 미호출, SC-004) + confirm size 상한(SC-009). 잔여: presign content-type 바인딩·size 교차검증은 R2 실연동 후속(011 GAP-011-01) |
 | `ProductService/Repository.searchProducts` 직접 단위 테스트 | 상태 필터(ACTIVE·OUT_OF_STOCK)·정렬(price/createdAt + id desc)·Decimal 가격 범위 직접 검증 | (1) 단위테스트 가능 | product.service.spec/e2e 에 검색 질의 직접 테스트 추가 | 개발 | search.service.spec mock 호출 단언 + e2e 부팅(200)으로 간접 커버 |
 
 > 카테고리 (1) 항목이 1건 — ProductService/Repository.searchProducts 직접 테스트. 검색 질의 자체(상태
@@ -70,7 +70,12 @@
 
 ## 파일 PENDING→UPLOADED 확정 부재 (상세)
 
-**현상**: presign 시 생성되는 `FileAsset` 은 항상 `status=PENDING`·`size=0` 이며, 이를 `UPLOADED` 로
+> **RESOLVED — 011-file-security(커밋 88de003)에서 해결.** 아래 현상·근본 원인은 006 시점 기준 기록이며,
+> 011 이 `POST /files/:id/confirm` + `confirm(userId, id, size)`(PENDING→UPLOADED 전이·size 기록·멱등·
+> size 범위 검증)로 해소했다. confirm 단위 테스트(SC-005~010)가 전이·타인·미존재·멱등·상한·비양수를 직접
+> 단언한다. 상세는 `docs/specs/v1.0.0/011-file-security/` 참조.
+
+**현상**(006 시점): presign 시 생성되는 `FileAsset` 은 항상 `status=PENDING`·`size=0` 이며, 이를 `UPLOADED` 로
 전이하거나 실제 size 를 기록하는 경로가 없다.
 
 **근본 원인 (코드 근거)**:
@@ -93,7 +98,12 @@
 
 ## GET /files/:id 소유권 미검증 (상세)
 
-**현상**: `FileService.getById(id)` 가 `findById` 후 소유권 검증 없이 메타(`key`·`url`·`ownerId`·
+> **RESOLVED — 011-file-security(커밋 88de003)에서 해결.** 011 이 `getById(userId, id)` 로 시그니처를
+> 바꾸고 `ownerId !== userId` → 403, 미존재 → 404 소유권 검증을 추가하여 메타 IDOR 를 차단했다(메타
+> 엔드포인트 일괄 소유자 전용 — 공개 표시는 publicUrl 직접 사용). 403 단위 테스트(SC-001) 포함. 상세는
+> `docs/specs/v1.0.0/011-file-security/` 참조.
+
+**현상**(006 시점): `FileService.getById(id)` 가 `findById` 후 소유권 검증 없이 메타(`key`·`url`·`ownerId`·
 `contentType` 등)를 반환한다. `FileController.getById` 는 `JwtAuthGuard` 만 적용되어 임의 인증 사용자가
 타인 파일 메타를 조회할 수 있다.
 
@@ -110,7 +120,13 @@ purpose 도입 시 메타 스코핑 부재가 정보 노출로 이어질 수 있
 
 ## presign 입력 무검증 (상세)
 
-**현상**: `PresignDto` 가 `purpose`(@IsEnum)·`contentType`(@IsString)만 검증하고, contentType 허용
+> **RESOLVED — 011-file-security(커밋 88de003)에서 해결.** 011 이 `presign` 진입부에서
+> `ALLOWED_CONTENT_TYPES`(image/jpeg·png·webp·gif) allowlist 외 contentType 을 400 으로 거부(create
+> 이전·repo 미호출, SC-004)하고, 크기 상한은 confirm 단계 `MAX_FILE_SIZE_BYTES`(10MiB, SC-009)로 검증한다.
+> 잔여: presign 시점 content-type 바인딩·실제 업로드 크기 교차검증은 R2 실연동 후속(011 GAP-011-01, Low).
+> 상세는 `docs/specs/v1.0.0/011-file-security/` 참조.
+
+**현상**(006 시점): `PresignDto` 가 `purpose`(@IsEnum)·`contentType`(@IsString)만 검증하고, contentType 허용
 MIME allowlist 와 파일 크기 상한이 없다. `presign` 은 `size: 0` placeholder 로 레코드를 생성한다.
 
 **위험도**: Low. 현재 stub 모델(무네트워크, 실제 업로드 미발생)에서는 악용 표면이 제한적이나, 실제 R2
