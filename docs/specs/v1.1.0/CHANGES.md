@@ -1,3 +1,81 @@
+## [004-seller-order-shipping] 구현 완료
+
+> v1.1.0 프론트엔드 사이클의 네 번째 차수(003 api-client 다음, FRONTEND-PLAN Phase 1 판매자 화면 첫 차수).
+> base `0db61b9`(003 완료) → `8bba04d`(004 완료). 변경 라인은 `git diff 0db61b9 8bba04d -- packages
+> apps/console` 로 재생성(8 files, +481/-10). **마이그레이션 없음**(DB 스키마 변경 0 — 프론트 console 화면 +
+> 공유 패키지). **신규 의존성 0**(`package.json` 변경 없음). 001~003(공유 기반 Phase 0) 위에 첫 도메인 화면.
+
+**변경 파일**:
+- `apps/console/app/(dashboard)/seller/orders/page.tsx`(신규): 판매자 주문 목록. `useQuery(['seller','orders'],
+  api.order.listSeller, { enabled: isSeller })`로 조회 후 `@doa/ui` Table 렌더(주문 ID 앞 12자…·상태
+  Badge[`ORDER_STATUS_TONE`/`LABEL`]·결제금액[`formatKRW`, 우측]·주문일·조치). `OrderAction` 상태별 분기 —
+  `confirmed`→"주문 확인" 버튼(`api.order.confirm` mutation, `onSuccess` invalidate)·`preparing`→"송장 등록"
+  링크·`shipped`/`delivered`→"배송 관리" 링크·그 외→"—". 로딩·에러(`ApiError`)·빈(`EmptyState`)·비판매자 분기.
+- `apps/console/app/(dashboard)/seller/orders/[id]/ship/page.tsx`(신규): 송장 등록 + 배송 관리. 송장
+  미등록 시 등록 폼(carrier·trackingNumber `Input`, 빈 값 비활성화)→`api.shipping.create`(`POST /shipments`,
+  preparing→shipped), 생성 `Shipment` 를 세션 state(`useState`) 보관. 등록 후 배송 상태 Card
+  (`updateStatus('in_transit')`="배송중 처리"·`updateStatus('delivered')`="배송완료 처리",
+  `delivered` 시 버튼 비활성화) + 추적 이력 Card(`api.shipping.tracking`, `enabled: !!shipment`, 상태·설명·
+  발생 시각 시간순).
+- `apps/console/lib/order.ts`(신규): `ORDER_STATUS_LABEL`/`ORDER_STATUS_TONE`(Badge tone)·
+  `SHIPMENT_STATUS_LABEL`·`formatKRW(amount: string)`(Decimal 문자열을 `Number().toLocaleString('ko-KR')`로
+  표기, `Number.isFinite` 방어 — 부동소수점 금지 P-005).
+- `packages/shared-types/src/index.ts`: 주문·배송 view 타입 7종(`OrderStatus`·`SellerOrder`·`ShipmentStatus`·
+  `Shipment`·`ShipmentTracking`·`CreateShipmentRequest`·`UpdateShipmentStatusRequest`). 백엔드 응답이 OpenAPI
+  에 미정의(Prisma 엔티티 반환 — 001 coverage-gap)이므로 전이형 view 타입으로 한시 정의. 금전 필드
+  (`totalAmount`·`discountAmount`)는 Decimal→JSON 직렬화상 **문자열**.
+- `packages/api-client/src/index.ts`: `createApiClient` 반환에 `order`(listSeller·confirm)·`shipping`
+  (create·updateStatus·tracking) 도메인 facade 추가. `api.http` 기반(`http.get/post/patch`), view 타입을
+  응답 제네릭으로 사용. 기존 facade(auth·user·seller·catalog·inventory)·`client`·`http` 불변.
+- `packages/ui/src/table.tsx`(신규) + `packages/ui/src/index.ts`: 경량 Table 프리미티브 6종(`Table`·`THead`·
+  `TBody`·`TR`·`TH`·`TD` — 시맨틱 토큰 `border-border`·`bg-muted/50`·`divide-border`·`text-foreground`) 추가·
+  재노출. 주석 "정렬·필터가 필요해지면 TanStack Table 로 확장".
+- `apps/console/app/(dashboard)/layout.tsx`: AppShell `NAV` 판매자 섹션에 "주문·배송"(`/seller/orders`) 항목
+  추가(`isSeller` 한정 노출) + 잔여 zinc 토큰을 시맨틱 토큰(`border-border`·`bg-surface`·`text-muted-foreground`·
+  `bg-accent`·`text-on-accent`·`bg-muted`·`rounded-control`)으로 전환(잔여 zinc 0).
+
+**검증**: `pnpm --filter console typecheck` 0 error / `pnpm --filter console build` 14 라우트 PASS
+(`/seller/orders` ○ 정적·`/seller/orders/[id]/ship` ƒ 동적) / 기존 화면(상품·계정·관리자) 회귀 0. 신규
+단위/e2e 테스트 0(UI 화면 — `git diff 0db61b9 8bba04d -- packages apps/console` 에 `*.spec.ts`·`*.e2e.ts`
+변경 0, 검증은 타입체크 + 빌드 + 정적 구조 리뷰로 갈음). 변경 라인 직접 카운트(ship +173·orders +140·
+shared-types +61·lib/order +37·table.tsx +35·api-client +23·layout +11/-10·ui index +1 = 8 files +481/-10).
+마이그레이션 없음(DB 스키마 변경 0). 신규 의존 0(`package.json` 변경 없음 — P-002 무저촉 자명).
+
+**해결**: **FRONTEND-PLAN Phase 1(판매자 화면) 주문·배송 이행 — 003 GAP-003-01 의 판매자 도메인 화면 부분
+RESOLVED**. 001~003 이 완성한 공유 기반(생성 타입·디자인 시스템·타입드 api-client) 위에 판매자가 주문을
+이행(결제 완료 주문 확인 → 송장 등록(발송) → 배송 상태 전이 → 추적 조회)할 첫 도메인 화면을 제공. 응답
+스키마가 OpenAPI 미정의인 주문·배송 도메인이라 타입드 client 대신 전이형 view 타입 + `api.order`/`api.shipping`
+facade 를 채택(요청 측 정확, 응답은 한시 view 타입). 판매자 주문 상세·주문→송장 조회 엔드포인트(BE-GAP)·응답
+스키마 보강·rhf/낙관적 업데이트/서버 페이지네이션/DataTable 은 GAP-004-01(Low~Medium) / Phase 2·백엔드 후속.
+
+**후속 작업 시 주의사항**:
+- **응답 view 타입 한시성(핵심)**: 주문·배송 응답 view 타입(`@doa/shared-types` — `SellerOrder`·`Shipment`
+  등, 금전 string)은 백엔드 응답이 OpenAPI 에 미정의(Prisma 엔티티 반환 — 001 coverage-gap)여서 한시 정의한
+  것이다. 백엔드에 도메인별 응답 DTO + `@ApiResponse({ type })` 를 보강하고 코드젠을 재생성하면, 이 view
+  타입을 생성 타입(`Schemas['...']`)으로 대체하고 화면을 003 타입드 client(`api.client.GET`)로 전환할 수 있다.
+  금전 필드는 Decimal→문자열이므로 대체 후에도 `string` 유지를 확인해야 한다(부동소수점 금지 — P-005).
+- **BE-GAP: 판매자 주문 상세 엔드포인트 부재(GAP-004-01, Medium)**: `GET /orders/:id` 는 구매자 스코프이므로
+  판매자용 단건 주문 상세 조회 엔드포인트가 없다. ship 페이지는 주문 상세(items 등)를 직접 가져오지 못하고
+  `useParams` 의 orderId 만 사용한다. 백엔드에 `GET /seller/orders/:id`(items 포함) 추가 시 ship 페이지에
+  주문 상세 표시를 보강한다.
+- **BE-GAP: 주문→송장 조회 엔드포인트 부재(GAP-004-01, Medium)**: `GET /shipments?orderId` 또는 주문 응답에
+  shipment 포함이 없어, 이미 발송된 주문에 ship 페이지 재진입 시 기존 shipment id 를 복구하지 못한다. 현재는
+  송장 등록 **직후 세션 state** 의 shipment id 로 상태변경·추적이 동작한다(세션 내 완결). 재진입 시 재등록
+  시도는 백엔드가 400(주문이 preparing 아님)으로 거부한다. 백엔드 조회 엔드포인트 추가 시 진입 시 기존 송장
+  복구를 구현한다.
+- **상태 전이는 백엔드 강제**: 주문 상태(7종)·배송 상태(4종) 전이는 백엔드가 강제한다 — confirm(confirmed→
+  preparing)·송장 등록(preparing→shipped)·배송완료(delivered 시 주문도 delivered). 프론트는 라벨·톤 매핑과
+  조치 분기만 담당한다. 신규 상태 추가 시 `lib/order.ts` 의 `Record<OrderStatus,...>`/`Record<ShipmentStatus,
+  ...>` 매핑을 갱신해야 타입체크가 통과한다.
+- **권한은 백엔드 강제(UI 표시 분기만)**: 본 화면의 `isSeller` 분기는 표시 편의이며 데이터 보호가 아니다.
+  실제 인가는 백엔드 판매자 스코프·권한 3축이 강제한다. UI 분기만 믿고 백엔드 권한 검증을 생략하면 안 된다.
+- **Table 프리미티브 확장 경로**: `@doa/ui` Table 6종은 경량 마크업(시맨틱 토큰)이며 정렬·필터가 없다. 목록
+  정렬/필터/서버 페이지네이션이 필요해지면 TanStack Table 기반 DataTable 로 확장한다(Phase 2 — `table.tsx`
+  주석 명시). 현재 주문 목록은 `GET /seller/orders` 전체 배열을 렌더한다(서버 페이지네이션 미적용).
+- **Phase 2 후속(GAP-004-01, Low)**: 송장 등록 폼은 제어 컴포넌트 + 빈 값 비활성화이며 rhf+zod 검증을
+  사용하지 않는다. mutation 은 서버 응답 후 `setState`/`invalidateQueries`(낙관적 업데이트 미적용). e2e
+  테스트도 없다. Phase 2 에서 rhf+zod·낙관적 업데이트·서버 페이지네이션·DataTable·Playwright e2e 를 보강한다.
+
 ## [003-api-client-typed] 구현 완료
 
 > v1.1.0 프론트엔드 사이클의 세 번째 차수(002 디자인 시스템 다음). base `29eb81f`(002 SDD 문서 커밋) →
