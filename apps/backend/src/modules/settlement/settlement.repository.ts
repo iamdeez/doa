@@ -36,6 +36,19 @@ export class SettlementRepository {
     await this.prisma.tx.settlementItem.createMany({ data: items });
   }
 
+  /**
+   * 주어진 orderItemId 중 이미 정산에 포함된 것들을 반환 (008 멱등성).
+   * P-001: settlement_items(자기 소유 테이블)만 조회. 중복 집계 방지용.
+   */
+  async findSettledOrderItemIds(orderItemIds: string[]): Promise<string[]> {
+    if (orderItemIds.length === 0) return [];
+    const rows = await this.prisma.tx.settlementItem.findMany({
+      where: { orderItemId: { in: orderItemIds } },
+      select: { orderItemId: true },
+    });
+    return rows.map((r) => r.orderItemId);
+  }
+
   async findById(id: string): Promise<SettlementWithItems | null> {
     return this.prisma.tx.settlement.findUnique({
       where: { id },

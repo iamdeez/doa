@@ -640,7 +640,8 @@ model SettlementItem {
   /// cross-schema plain String — orders.orders.id (P-001 경계)
   orderId          String
   /// cross-schema plain String — orders.order_items.id (P-001 경계)
-  orderItemId      String
+  /// @unique: 동일 주문항목 중복 정산 DB 수준 차단 (008 SEC-FIND-005-01)
+  orderItemId      String     @unique
   /// 금전 필드 — 항목 매출 = unitPrice × quantity (P-005)
   saleAmount       Decimal    @db.Decimal(12, 2)
   /// 금전 필드 — 항목 수수료 = saleAmount × COMMISSION_RATE (P-005)

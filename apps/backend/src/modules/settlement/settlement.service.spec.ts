@@ -22,6 +22,7 @@ import { SellerService } from '../seller/seller.service';
 const mockSettlementRepository = {
   createSettlement: jest.fn(),
   createItems: jest.fn(),
+  findSettledOrderItemIds: jest.fn(),
   findById: jest.fn(),
   listBySeller: jest.fn(),
   listAll: jest.fn(),
@@ -50,6 +51,8 @@ describe('SettlementService', () => {
 
   beforeEach(async () => {
     jest.clearAllMocks();
+    // 기본값: 기집계 항목 없음 (멱등성 필터가 모든 후보를 통과시키도록)
+    mockSettlementRepository.findSettledOrderItemIds.mockResolvedValue([]);
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         SettlementService,
@@ -127,6 +130,55 @@ describe('SettlementService', () => {
       const arg = mockSettlementRepository.createSettlement.mock.calls[0][0];
       expect(arg.totalSales.toString()).toBe('0');
       expect(arg.commission.toString()).toBe('0');
+      expect(arg.payoutAmount.toString()).toBe('0');
+      expect(mockSettlementRepository.createItems).not.toHaveBeenCalled();
+    });
+
+    // ── 멱등성 (008 SEC-FIND-005-01) ──────────────────────────────────────
+    it('when_some_items_already_settled_then_excluded_from_aggregation', async () => {
+      /**
+       * 중복 집계 방지: 후보 3건 중 oi1·oi2 가 이미 정산됨 → oi3 만 집계.
+       *   oi3 saleAmount=5000 → totalSales=5000, commission=500, payout=4500
+       */
+      mockOrderService.getCompletedItemsForSettlement.mockResolvedValue([
+        { orderId: 'o1', orderItemId: 'oi1', saleAmount: new Prisma.Decimal('10000') },
+        { orderId: 'o2', orderItemId: 'oi2', saleAmount: new Prisma.Decimal('23455') },
+        { orderId: 'o3', orderItemId: 'oi3', saleAmount: new Prisma.Decimal('5000') },
+      ]);
+      mockSettlementRepository.findSettledOrderItemIds.mockResolvedValue(['oi1', 'oi2']);
+      mockSettlementRepository.createSettlement.mockResolvedValue({ id: 'st-4' });
+      mockSettlementRepository.findById.mockResolvedValue({ id: 'st-4', items: [] });
+
+      await service.createSettlement('seller-1', PERIOD_START, PERIOD_END);
+
+      // 기집계 조회는 후보 전체 orderItemId 로 수행
+      expect(mockSettlementRepository.findSettledOrderItemIds).toHaveBeenCalledWith([
+        'oi1',
+        'oi2',
+        'oi3',
+      ]);
+      const arg = mockSettlementRepository.createSettlement.mock.calls[0][0];
+      expect(arg.totalSales.toString()).toBe('5000');
+      expect(arg.commission.toString()).toBe('500');
+      expect(arg.payoutAmount.toString()).toBe('4500');
+      const itemsArg = mockSettlementRepository.createItems.mock.calls[0][0];
+      expect(itemsArg).toHaveLength(1);
+      expect(itemsArg[0].orderItemId).toBe('oi3');
+    });
+
+    it('when_all_items_already_settled_then_zero_and_no_items_created', async () => {
+      /** 재정산: 모든 후보가 기집계됨 → 금액 0, createItems 미호출 (중복 지급액 0) */
+      mockOrderService.getCompletedItemsForSettlement.mockResolvedValue([
+        { orderId: 'o1', orderItemId: 'oi1', saleAmount: new Prisma.Decimal('10000') },
+      ]);
+      mockSettlementRepository.findSettledOrderItemIds.mockResolvedValue(['oi1']);
+      mockSettlementRepository.createSettlement.mockResolvedValue({ id: 'st-5' });
+      mockSettlementRepository.findById.mockResolvedValue({ id: 'st-5', items: [] });
+
+      await service.createSettlement('seller-1', PERIOD_START, PERIOD_END);
+
+      const arg = mockSettlementRepository.createSettlement.mock.calls[0][0];
+      expect(arg.totalSales.toString()).toBe('0');
       expect(arg.payoutAmount.toString()).toBe('0');
       expect(mockSettlementRepository.createItems).not.toHaveBeenCalled();
     });

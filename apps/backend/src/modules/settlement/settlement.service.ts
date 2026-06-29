@@ -34,11 +34,20 @@ export class SettlementService {
   ): Promise<SettlementWithItems> {
     const rate = new Prisma.Decimal(COMMISSION_RATE);
 
-    const items = await this.orderService.getCompletedItemsForSettlement(
+    const candidates = await this.orderService.getCompletedItemsForSettlement(
       sellerId,
       periodStart,
       periodEnd,
     );
+
+    // 멱등성(008 SEC-FIND-005-01): 이미 정산된 주문항목은 제외하여 중복 지급액 산정 방지.
+    // P-001: 기집계 항목은 settlement 자기 소유 테이블(settlement_items)에서 조회.
+    const settledIds = new Set(
+      await this.settlementRepository.findSettledOrderItemIds(
+        candidates.map((item) => item.orderItemId),
+      ),
+    );
+    const items = candidates.filter((item) => !settledIds.has(item.orderItemId));
 
     const totalSales = items.reduce(
       (acc, item) => acc.add(item.saleAmount),
