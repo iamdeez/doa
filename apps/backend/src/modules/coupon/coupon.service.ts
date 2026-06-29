@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   ForbiddenException,
   Injectable,
@@ -40,6 +41,7 @@ export class CouponService {
       description?: string | null;
     },
   ) {
+    this._assertValidDiscount(data);
     return this.couponRepository.createCoupon({
       issuerType: CouponIssuerType.ADMIN,
       issuerId: adminUserId,
@@ -76,6 +78,7 @@ export class CouponService {
     },
   ) {
     const seller = await this.sellerService.getApprovedSeller(sellerUserId);
+    this._assertValidDiscount(data);
     return this.couponRepository.createCoupon({
       issuerType: CouponIssuerType.SELLER,
       issuerId: seller.id,
@@ -215,10 +218,40 @@ export class CouponService {
   }
 
   /**
+   * 쿠폰 생성 입력 검증 (SEC-001 — 음수/범위 위반 할인값 차단).
+   * 음수 discountValue 는 할인을 음수로 만들어 주문 총액을 증가시키는 과다청구를 유발하므로
+   * 생성 시점에 거부한다(서버 권위 검증, DTO @IsDecimal 만으로는 부호·범위 미보장).
+   * - discountValue > 0 (FIXED·PERCENTAGE 공통)
+   * - PERCENTAGE: discountValue ≤ 100 (비율 상한)
+   * - maxDiscountAmount·minOrderAmount: 음수 불가
+   */
+  private _assertValidDiscount(data: {
+    type: CouponType;
+    discountValue: Prisma.Decimal;
+    maxDiscountAmount?: Prisma.Decimal | null;
+    minOrderAmount?: Prisma.Decimal | null;
+  }): void {
+    if (data.discountValue.lte(0)) {
+      throw new BadRequestException('discountValue must be greater than 0');
+    }
+    if (data.type === CouponType.PERCENTAGE && data.discountValue.gt(100)) {
+      throw new BadRequestException(
+        'PERCENTAGE discountValue must be between 1 and 100',
+      );
+    }
+    if (data.maxDiscountAmount != null && data.maxDiscountAmount.lt(0)) {
+      throw new BadRequestException('maxDiscountAmount must be non-negative');
+    }
+    if (data.minOrderAmount != null && data.minOrderAmount.lt(0)) {
+      throw new BadRequestException('minOrderAmount must be non-negative');
+    }
+  }
+
+  /**
    * 쿠폰 유형별 할인 금액 계산 (FR-012, ADR-005).
    * FIXED: min(discountValue, totalAmount)
    * PERCENTAGE: floor(totalAmount * discountValue / 100), max 상한 clamp
-   * 결과는 항상 0 이상 totalAmount 이하.
+   * 결과는 항상 0 이상 totalAmount 이하 — 최종 0 floor 로 음수(과다청구) 방어(SEC-001 심층 방어).
    */
   private _calcDiscount(
     coupon: {
@@ -228,8 +261,13 @@ export class CouponService {
     },
     totalAmount: Prisma.Decimal,
   ): Prisma.Decimal {
+    const ZERO = new Prisma.Decimal(0);
+
     if (coupon.type === CouponType.FIXED) {
-      return Prisma.Decimal.min(coupon.discountValue, totalAmount);
+      return Prisma.Decimal.max(
+        ZERO,
+        Prisma.Decimal.min(coupon.discountValue, totalAmount),
+      );
     }
 
     // PERCENTAGE: floor(total * rate / 100)
@@ -243,6 +281,6 @@ export class CouponService {
         ? Prisma.Decimal.min(base, coupon.maxDiscountAmount)
         : base;
 
-    return Prisma.Decimal.min(capped, totalAmount);
+    return Prisma.Decimal.max(ZERO, Prisma.Decimal.min(capped, totalAmount));
   }
 }

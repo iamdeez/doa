@@ -24,6 +24,7 @@
  */
 
 import {
+  BadRequestException,
   ConflictException,
   ForbiddenException,
   NotFoundException,
@@ -241,6 +242,67 @@ describe('CouponService', () => {
           expiresAt: new Date('2027-01-01'),
         }),
       ).rejects.toThrow(ForbiddenException);
+    });
+  });
+
+  // ── 쿠폰 생성 입력 검증 (SEC-001 — 음수/범위 할인값 차단) ──────────────────
+
+  describe('createCoupon — discountValue 검증 (SEC-001)', () => {
+    it('when_discountValue_negative_then_BadRequest_and_repo_not_called', async () => {
+      await expect(
+        service.createCoupon('admin-1', {
+          type: CouponType.FIXED,
+          discountValue: new Prisma.Decimal('-5000'),
+          expiresAt: new Date('2027-01-01'),
+        }),
+      ).rejects.toThrow(BadRequestException);
+      expect(mockCouponRepository.createCoupon).not.toHaveBeenCalled();
+    });
+
+    it('when_discountValue_zero_then_BadRequest', async () => {
+      await expect(
+        service.createCoupon('admin-1', {
+          type: CouponType.FIXED,
+          discountValue: new Prisma.Decimal('0'),
+          expiresAt: new Date('2027-01-01'),
+        }),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('when_PERCENTAGE_discountValue_over_100_then_BadRequest', async () => {
+      await expect(
+        service.createCoupon('admin-1', {
+          type: CouponType.PERCENTAGE,
+          discountValue: new Prisma.Decimal('150'),
+          expiresAt: new Date('2027-01-01'),
+        }),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('when_negative_maxDiscountAmount_then_BadRequest', async () => {
+      await expect(
+        service.createCoupon('admin-1', {
+          type: CouponType.PERCENTAGE,
+          discountValue: new Prisma.Decimal('20'),
+          maxDiscountAmount: new Prisma.Decimal('-1'),
+          expiresAt: new Date('2027-01-01'),
+        }),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('when_seller_discountValue_negative_then_BadRequest_after_approval', async () => {
+      mockSellerService.getApprovedSeller.mockResolvedValue({
+        id: 'seller-id-1',
+        userId: 'seller-user-1',
+      });
+      await expect(
+        service.createSellerCoupon('seller-user-1', {
+          type: CouponType.FIXED,
+          discountValue: new Prisma.Decimal('-3000'),
+          expiresAt: new Date('2027-01-01'),
+        }),
+      ).rejects.toThrow(BadRequestException);
+      expect(mockCouponRepository.createCoupon).not.toHaveBeenCalled();
     });
   });
 
@@ -463,6 +525,29 @@ describe('CouponService', () => {
       );
 
       expect(result.discountAmount.toString()).toBe('3000');
+    });
+
+    it('when_coupon_has_negative_discountValue_then_floored_to_zero (SEC-001 심층방어)', async () => {
+      /**
+       * SEC-001 방어 심층화: 잘못된(음수) discountValue 쿠폰이 DB 에 존재하더라도
+       * _calcDiscount 가 0 으로 floor 하여 음수 할인(과다청구)을 방지한다.
+       * totalAmount=10000, discountValue=-5000 → discountAmount=0 (음수 아님).
+       */
+      mockCouponRepository.findUserCouponWithCoupon.mockResolvedValue({
+        ...UNUSED_USER_COUPON,
+        coupon: {
+          ...FIXED_COUPON,
+          discountValue: new Prisma.Decimal('-5000'),
+        },
+      });
+
+      const result = await service.validateAndCalculateDiscount(
+        'uc-1',
+        'user-1',
+        new Prisma.Decimal('10000'),
+      );
+
+      expect(result.discountAmount.toString()).toBe('0');
     });
 
     // ── Happy Path: PERCENTAGE 할인 계산 (SC-014) ─────────────────────
