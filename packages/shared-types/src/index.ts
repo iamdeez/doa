@@ -1,10 +1,22 @@
 /**
- * @doa/shared-types — 백엔드(apps/backend) 001-skeleton / 002-catalog 단계에서
- * 안정화된 HTTP 계약을 프론트(console)·api-client 가 공유하는 타입 정의.
+ * @doa/shared-types — 프론트(console)·api-client 가 공유하는 백엔드 HTTP 계약 타입.
  *
- * 출처: apps/backend/src/modules/{auth,user,product,inventory,seller} 컨트롤러·DTO·prisma enum.
- * 003-commerce(cart/order/payment) 타입은 해당 spec 구현 후 추가한다.
+ * **Phase 0(OpenAPI 코드젠) 전환 중**:
+ * - `openapi.gen.ts` 가 백엔드 OpenAPI(`apps/backend/openapi.json`)에서 자동 생성된 SSOT 다
+ *   (`pnpm --filter @doa/shared-types gen`). 신규 타입은 여기서 가져온다.
+ * - 아래 수기 타입(001/002 도메인)은 기존 console 화면 호환을 위해 한시 유지하며,
+ *   생성 타입으로 점진 대체한다.
  */
+
+// OpenAPI 자동 생성 계약 (SSOT) — paths/components/operations 전체 재노출.
+export type { paths, components, operations } from './openapi.gen';
+import type { components as _components } from './openapi.gen';
+
+/** OpenAPI components.schemas 단축 접근 — `Schemas['CreateProductDto']` 형태. */
+export type Schemas = _components['schemas'];
+/** 개별 스키마 추출 헬퍼 — `Schema<'CreateCouponDto'>`. */
+export type Schema<K extends keyof _components['schemas']> =
+  _components['schemas'][K];
 
 // ---------------------------------------------------------------------------
 // 공통

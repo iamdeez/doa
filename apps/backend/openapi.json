@@ -1,0 +1,3128 @@
+{
+  "openapi": "3.0.0",
+  "paths": {
+    "/orders": {
+      "post": {
+        "operationId": "OrderController_createOrder",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateOrderDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "summary": "POST /orders — 주문 생성",
+        "tags": [
+          "Order"
+        ]
+      },
+      "get": {
+        "operationId": "OrderController_listMyOrders",
+        "parameters": [
+          {
+            "name": "cursor",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "GET /orders — 내 주문 목록",
+        "tags": [
+          "Order"
+        ]
+      }
+    },
+    "/orders/{orderId}": {
+      "get": {
+        "operationId": "OrderController_getDetail",
+        "parameters": [
+          {
+            "name": "orderId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "summary": "GET /orders/:orderId — 주문 상세",
+        "tags": [
+          "Order"
+        ]
+      }
+    },
+    "/orders/{orderId}/cancel": {
+      "post": {
+        "operationId": "OrderController_cancel",
+        "parameters": [
+          {
+            "name": "orderId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          }
+        },
+        "summary": "POST /orders/:orderId/cancel — 주문 취소 (구매자)",
+        "tags": [
+          "Order"
+        ]
+      }
+    },
+    "/orders/{orderId}/complete": {
+      "post": {
+        "operationId": "OrderController_complete",
+        "parameters": [
+          {
+            "name": "orderId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          }
+        },
+        "summary": "POST /orders/:orderId/complete — 구매 확정 (구매자)",
+        "tags": [
+          "Order"
+        ]
+      }
+    },
+    "/seller/orders": {
+      "get": {
+        "operationId": "SellerOrderController_listSellerOrders",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "GET /seller/orders — 판매자 수주 목록",
+        "tags": [
+          "SellerOrder"
+        ]
+      }
+    },
+    "/seller/orders/{orderId}/confirm": {
+      "post": {
+        "operationId": "SellerOrderController_confirm",
+        "parameters": [
+          {
+            "name": "orderId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          }
+        },
+        "summary": "POST /seller/orders/:orderId/confirm — 판매자 주문 확인 (pending → preparing)",
+        "tags": [
+          "SellerOrder"
+        ]
+      }
+    },
+    "/sellers/register": {
+      "post": {
+        "operationId": "SellerController_register",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegisterSellerDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "summary": "판매자 등록 (FR-011, SC-013)",
+        "tags": [
+          "Seller"
+        ]
+      }
+    },
+    "/sellers/me": {
+      "get": {
+        "operationId": "SellerController_getMyProfile",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "summary": "내 판매자 프로필 조회 (FR-012, SC-014)",
+        "tags": [
+          "Seller"
+        ]
+      },
+      "patch": {
+        "operationId": "SellerController_updateMyProfile",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateSellerDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "summary": "내 판매자 프로필 수정 (FR-013, SC-015)",
+        "tags": [
+          "Seller"
+        ]
+      }
+    },
+    "/sellers/me/status": {
+      "get": {
+        "operationId": "SellerController_getStatus",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "summary": "심사 상태 조회 (FR-014, SC-016)",
+        "tags": [
+          "Seller"
+        ]
+      }
+    },
+    "/sellers/{id}/approve": {
+      "patch": {
+        "operationId": "SellerController_approve",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "summary": "승인 (FR-015, SC-017) — SEC-001 수정: AdminGuard 적용.\nADMIN_USER_IDS 미포함 사용자 → 403. fail-closed(미설정 시 전원 거부).",
+        "tags": [
+          "Seller"
+        ]
+      }
+    },
+    "/sellers/{id}/reject": {
+      "patch": {
+        "operationId": "SellerController_reject",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RejectSellerDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "summary": "거부 (FR-016, SC-018) — SEC-001 수정: AdminGuard 적용.\nADMIN_USER_IDS 미포함 사용자 → 403. fail-closed(미설정 시 전원 거부).",
+        "tags": [
+          "Seller"
+        ]
+      }
+    },
+    "/products": {
+      "get": {
+        "operationId": "ProductController_listPublic",
+        "parameters": [
+          {
+            "name": "cursor",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Product"
+        ]
+      },
+      "post": {
+        "operationId": "ProductController_createProduct",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateProductDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Product"
+        ]
+      }
+    },
+    "/products/{id}": {
+      "get": {
+        "operationId": "ProductController_getDetail",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "summary": "GET /products/:id — 상세 조회, 인증 시 조회 기록",
+        "tags": [
+          "Product"
+        ]
+      },
+      "patch": {
+        "operationId": "ProductController_updateProduct",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateProductDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "PATCH /products/:id — 상품 수정 (소유자만)",
+        "tags": [
+          "Product"
+        ]
+      }
+    },
+    "/products/{id}/publish": {
+      "patch": {
+        "operationId": "ProductController_publish",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "PATCH /products/:id/publish — DRAFT/INACTIVE → ACTIVE",
+        "tags": [
+          "Product"
+        ]
+      }
+    },
+    "/products/{id}/deactivate": {
+      "patch": {
+        "operationId": "ProductController_deactivate",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "PATCH /products/:id/deactivate — ACTIVE/OUT_OF_STOCK → INACTIVE",
+        "tags": [
+          "Product"
+        ]
+      }
+    },
+    "/products/{id}/variants": {
+      "post": {
+        "operationId": "ProductController_addVariant",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateVariantDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Product"
+        ]
+      }
+    },
+    "/products/{id}/variants/{variantId}": {
+      "patch": {
+        "operationId": "ProductController_updateVariant",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "variantId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateVariantDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "PATCH /products/:id/variants/:variantId — variant 수정",
+        "tags": [
+          "Product"
+        ]
+      },
+      "delete": {
+        "operationId": "ProductController_deleteVariant",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "variantId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          }
+        },
+        "summary": "DELETE /products/:id/variants/:variantId — variant 삭제",
+        "tags": [
+          "Product"
+        ]
+      }
+    },
+    "/products/{id}/images": {
+      "post": {
+        "operationId": "ProductController_addImage",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddImageDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Product"
+        ]
+      }
+    },
+    "/products/{id}/images/{imageId}": {
+      "delete": {
+        "operationId": "ProductController_deleteImage",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "imageId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          }
+        },
+        "summary": "DELETE /products/:id/images/:imageId — 이미지 삭제",
+        "tags": [
+          "Product"
+        ]
+      }
+    },
+    "/categories": {
+      "get": {
+        "operationId": "CategoriesController_listCategories",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Categories"
+        ]
+      }
+    },
+    "/sellers/me/products": {
+      "get": {
+        "operationId": "SellerProductController_listMyProducts",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "SellerProduct"
+        ]
+      }
+    },
+    "/inventory/{variantId}/stock-in": {
+      "post": {
+        "operationId": "InventoryController_stockIn",
+        "parameters": [
+          {
+            "name": "variantId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StockInDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "POST /inventory/:variantId/stock-in — 재고 입고 (APPROVED 판매자 + 소유 variant, FR-030, SC-041, SEC-002)",
+        "tags": [
+          "Inventory"
+        ]
+      }
+    },
+    "/inventory/{variantId}/stock": {
+      "get": {
+        "operationId": "InventoryController_getStock",
+        "parameters": [
+          {
+            "name": "variantId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "number"
+                }
+              }
+            }
+          }
+        },
+        "summary": "GET /inventory/:variantId/stock — 재고 수량 조회 (APPROVED 판매자 + 소유 variant, FR-031, SEC-002)",
+        "tags": [
+          "Inventory"
+        ]
+      }
+    },
+    "/cart": {
+      "get": {
+        "operationId": "CartController_getCart",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "GET /cart — 장바구니 조회",
+        "tags": [
+          "Cart"
+        ]
+      }
+    },
+    "/cart/items": {
+      "post": {
+        "operationId": "CartController_addItem",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddCartItemDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "summary": "POST /cart/items — 장바구니 항목 추가",
+        "tags": [
+          "Cart"
+        ]
+      }
+    },
+    "/cart/items/{variantId}": {
+      "put": {
+        "operationId": "CartController_updateQuantity",
+        "parameters": [
+          {
+            "name": "variantId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateCartItemDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "summary": "PUT /cart/items/:variantId — 수량 변경 (0이면 삭제)",
+        "tags": [
+          "Cart"
+        ]
+      },
+      "delete": {
+        "operationId": "CartController_removeItem",
+        "parameters": [
+          {
+            "name": "variantId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          }
+        },
+        "summary": "DELETE /cart/items/:variantId — 항목 제거",
+        "tags": [
+          "Cart"
+        ]
+      }
+    },
+    "/admin/coupons": {
+      "post": {
+        "operationId": "AdminCouponController_createCoupon",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateCouponDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "summary": "POST /admin/coupons — 관리자 쿠폰 생성 (FR-001)",
+        "tags": [
+          "AdminCoupon"
+        ]
+      },
+      "get": {
+        "operationId": "AdminCouponController_listCoupons",
+        "parameters": [
+          {
+            "name": "cursor",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "take",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "GET /admin/coupons — 관리자 쿠폰 목록 (FR-007)",
+        "tags": [
+          "AdminCoupon"
+        ]
+      }
+    },
+    "/admin/coupons/{id}/issue": {
+      "post": {
+        "operationId": "AdminCouponController_issueCoupon",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IssueCouponDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "summary": "POST /admin/coupons/:id/issue — 관리자 발급 (FR-003)",
+        "tags": [
+          "AdminCoupon"
+        ]
+      }
+    },
+    "/sellers/me/coupons": {
+      "post": {
+        "operationId": "SellerCouponController_createCoupon",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateCouponDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "summary": "POST /sellers/me/coupons — 판매자 쿠폰 생성 (FR-002)",
+        "tags": [
+          "SellerCoupon"
+        ]
+      },
+      "get": {
+        "operationId": "SellerCouponController_listCoupons",
+        "parameters": [
+          {
+            "name": "cursor",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "take",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "GET /sellers/me/coupons — 판매자 쿠폰 목록 (FR-006)",
+        "tags": [
+          "SellerCoupon"
+        ]
+      }
+    },
+    "/sellers/me/coupons/{id}/issue": {
+      "post": {
+        "operationId": "SellerCouponController_issueCoupon",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IssueCouponDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "summary": "POST /sellers/me/coupons/:id/issue — 판매자 발급 (FR-004)",
+        "tags": [
+          "SellerCoupon"
+        ]
+      }
+    },
+    "/users/me/coupons": {
+      "get": {
+        "operationId": "UserCouponController_listMyCoupons",
+        "parameters": [
+          {
+            "name": "status",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "unused",
+                "used",
+                "expired"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "summary": "GET /users/me/coupons — 내 쿠폰 목록 (FR-005)",
+        "tags": [
+          "UserCoupon"
+        ]
+      }
+    },
+    "/payments": {
+      "post": {
+        "operationId": "PaymentController_pay",
+        "parameters": [
+          {
+            "name": "idempotency-key",
+            "required": true,
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreatePaymentDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "summary": "POST /payments — 결제 생성.\nIdempotency-Key 헤더(UUID v4)를 우선, 없으면 body.idempotencyKey 사용.\n비-UUID v4 → 400 (FR-031, SC-035).\n금액은 서버 측 order.totalAmount 에서 취득 (외부 입력 불신).",
+        "tags": [
+          "Payment"
+        ]
+      }
+    },
+    "/health": {
+      "get": {
+        "operationId": "HealthController_check",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Health"
+        ]
+      }
+    },
+    "/auth/register": {
+      "post": {
+        "operationId": "AuthController_register",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegisterDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
+    "/auth/login": {
+      "post": {
+        "operationId": "AuthController_login",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
+    "/auth/refresh": {
+      "post": {
+        "operationId": "AuthController_refresh",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RefreshDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
+    "/auth/logout": {
+      "post": {
+        "operationId": "AuthController_logout",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RefreshDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
+    "/auth/me": {
+      "get": {
+        "operationId": "AuthController_me",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
+    "/users/me": {
+      "get": {
+        "operationId": "UserController_getMe",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "User"
+        ]
+      },
+      "patch": {
+        "operationId": "UserController_updateMe",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateProfileDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "User"
+        ]
+      }
+    },
+    "/users/me/addresses": {
+      "get": {
+        "operationId": "UserController_listAddresses",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "User"
+        ]
+      },
+      "post": {
+        "operationId": "UserController_createAddress",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateAddressDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "User"
+        ]
+      }
+    },
+    "/users/me/addresses/{id}": {
+      "patch": {
+        "operationId": "UserController_updateAddress",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateAddressDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "User"
+        ]
+      },
+      "delete": {
+        "operationId": "UserController_deleteAddress",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "User"
+        ]
+      }
+    },
+    "/users/me/addresses/{id}/default": {
+      "patch": {
+        "operationId": "UserController_setDefaultAddress",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "User"
+        ]
+      }
+    },
+    "/users/me/wishlist": {
+      "get": {
+        "operationId": "UserController_listWishlist",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "User"
+        ]
+      },
+      "post": {
+        "operationId": "UserController_addWishlist",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddWishlistDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "User"
+        ]
+      }
+    },
+    "/users/me/wishlist/{productId}": {
+      "delete": {
+        "operationId": "UserController_removeWishlist",
+        "parameters": [
+          {
+            "name": "productId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "User"
+        ]
+      }
+    },
+    "/users/me/recent-views": {
+      "get": {
+        "operationId": "UserController_listRecentViews",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "User"
+        ]
+      }
+    },
+    "/shipments": {
+      "post": {
+        "operationId": "ShippingController_createShipment",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateShipmentDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "summary": "POST /shipments — 송장 등록 (APPROVED 판매자)",
+        "tags": [
+          "Shipping"
+        ]
+      }
+    },
+    "/shipments/{id}/status": {
+      "patch": {
+        "operationId": "ShippingController_updateStatus",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateShipmentStatusDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "PATCH /shipments/:id/status — 배송 상태 업데이트 (판매자)",
+        "tags": [
+          "Shipping"
+        ]
+      }
+    },
+    "/shipments/{id}/tracking": {
+      "get": {
+        "operationId": "ShippingController_getTracking",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "GET /shipments/:id/tracking — 배송 추적 조회 (구매자 본인 또는 판매자)",
+        "tags": [
+          "Shipping"
+        ]
+      }
+    },
+    "/settlements": {
+      "post": {
+        "operationId": "SettlementController_createSettlement",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateSettlementDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "summary": "POST /settlements — 정산 생성 (관리자 전용)",
+        "tags": [
+          "Settlement"
+        ]
+      },
+      "get": {
+        "operationId": "SettlementController_listMySettlements",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "GET /settlements — 판매자 본인 정산 내역 (본인만)",
+        "tags": [
+          "Settlement"
+        ]
+      }
+    },
+    "/admin/settlements": {
+      "get": {
+        "operationId": "AdminSettlementController_listAll",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "GET /admin/settlements — 전체 정산 내역 (관리자)",
+        "tags": [
+          "AdminSettlement"
+        ]
+      }
+    },
+    "/reviews": {
+      "post": {
+        "operationId": "ReviewController_createReview",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateReviewDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "summary": "POST /reviews — 리뷰 작성 (FR-021~FR-023)",
+        "tags": [
+          "Review"
+        ]
+      }
+    },
+    "/reviews/{id}": {
+      "patch": {
+        "operationId": "ReviewController_updateReview",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateReviewDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "PATCH /reviews/:id — 리뷰 수정 (FR-024)",
+        "tags": [
+          "Review"
+        ]
+      },
+      "delete": {
+        "operationId": "ReviewController_deleteReview",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          }
+        },
+        "summary": "DELETE /reviews/:id — 리뷰 삭제 (FR-024)",
+        "tags": [
+          "Review"
+        ]
+      }
+    },
+    "/reviews/me": {
+      "get": {
+        "operationId": "ReviewController_listMyReviews",
+        "parameters": [
+          {
+            "name": "cursor",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "take",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "GET /reviews/me — 내 리뷰 목록 (FR-026)",
+        "tags": [
+          "Review"
+        ]
+      }
+    },
+    "/products/{productId}/reviews": {
+      "get": {
+        "operationId": "ProductReviewController_listProductReviews",
+        "parameters": [
+          {
+            "name": "productId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cursor",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "take",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "GET /products/:productId/reviews — 상품 리뷰 목록 (FR-025)",
+        "tags": [
+          "ProductReview"
+        ]
+      }
+    },
+    "/search/products": {
+      "get": {
+        "operationId": "SearchController_searchProducts",
+        "parameters": [
+          {
+            "name": "q",
+            "required": false,
+            "in": "query",
+            "description": "키워드 — 상품명 부분일치",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "categoryId",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "minPrice",
+            "required": false,
+            "in": "query",
+            "description": "최소 가격 — 금전 문자열(부동소수점 오차 방지, Decimal 변환 전제)",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "maxPrice",
+            "required": false,
+            "in": "query",
+            "description": "최대 가격",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "sort",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "latest",
+                "price_asc",
+                "price_desc"
+              ]
+            }
+          },
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "name": "size",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "summary": "GET /search/products — 키워드·카테고리·가격·정렬 필터 + offset 페이지네이션",
+        "tags": [
+          "Search"
+        ]
+      }
+    },
+    "/notifications": {
+      "get": {
+        "operationId": "NotificationController_list",
+        "parameters": [
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "name": "size",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "summary": "GET /notifications — 본인 알림 목록 (미읽음 우선/최신순)",
+        "tags": [
+          "Notification"
+        ]
+      }
+    },
+    "/notifications/read-all": {
+      "patch": {
+        "operationId": "NotificationController_markAllRead",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "PATCH /notifications/read-all — 본인 전체 읽음",
+        "tags": [
+          "Notification"
+        ]
+      }
+    },
+    "/notifications/{id}/read": {
+      "patch": {
+        "operationId": "NotificationController_markRead",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "PATCH /notifications/:id/read — 본인 알림 읽음 처리",
+        "tags": [
+          "Notification"
+        ]
+      }
+    },
+    "/files/presign": {
+      "post": {
+        "operationId": "FileController_presign",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PresignDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "summary": "POST /files/presign — presigned upload URL + 메타데이터(PENDING) 생성",
+        "tags": [
+          "File"
+        ]
+      }
+    },
+    "/files/{id}": {
+      "get": {
+        "operationId": "FileController_getById",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "GET /files/:id — 파일 메타 조회 (소유자 전용)",
+        "tags": [
+          "File"
+        ]
+      },
+      "delete": {
+        "operationId": "FileController_delete",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          }
+        },
+        "summary": "DELETE /files/:id — 본인 소유 파일 삭제",
+        "tags": [
+          "File"
+        ]
+      }
+    },
+    "/files/{id}/confirm": {
+      "post": {
+        "operationId": "FileController_confirm",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConfirmFileDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "summary": "POST /files/:id/confirm — 업로드 확정(PENDING→UPLOADED + size), 소유자 전용",
+        "tags": [
+          "File"
+        ]
+      }
+    },
+    "/admin/banners": {
+      "post": {
+        "operationId": "AdminBannerController_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateBannerDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "summary": "POST /admin/banners — 배너 생성",
+        "tags": [
+          "AdminBanner"
+        ]
+      },
+      "get": {
+        "operationId": "AdminBannerController_listAll",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "GET /admin/banners — 전체 목록 (관리자)",
+        "tags": [
+          "AdminBanner"
+        ]
+      }
+    },
+    "/admin/banners/{id}": {
+      "patch": {
+        "operationId": "AdminBannerController_update",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateBannerDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "PATCH /admin/banners/:id — 배너 부분 수정",
+        "tags": [
+          "AdminBanner"
+        ]
+      },
+      "delete": {
+        "operationId": "AdminBannerController_remove",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          }
+        },
+        "summary": "DELETE /admin/banners/:id — 배너 삭제",
+        "tags": [
+          "AdminBanner"
+        ]
+      }
+    },
+    "/banners": {
+      "get": {
+        "operationId": "BannerController_listPublic",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "GET /banners — 활성 + 노출기간 내 배너만 sortOrder 순 (공개, 인증 불필요)",
+        "tags": [
+          "Banner"
+        ]
+      }
+    },
+    "/admin/stats/overview": {
+      "get": {
+        "operationId": "AdminStatsController_getOverview",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "summary": "GET /admin/stats/overview — 플랫폼 요약 통계 (관리자)",
+        "tags": [
+          "AdminStats"
+        ]
+      }
+    },
+    "/seller/stats": {
+      "get": {
+        "operationId": "SellerStatsController_getMyStats",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "summary": "GET /seller/stats — 본인 판매 요약 (APPROVED 판매자 본인)",
+        "tags": [
+          "SellerStats"
+        ]
+      }
+    },
+    "/admin/sellers/pending": {
+      "get": {
+        "operationId": "AdminController_listPendingSellers",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "summary": "GET /admin/sellers/pending — 승인 대기 판매자 목록",
+        "tags": [
+          "Admin"
+        ]
+      }
+    },
+    "/admin/sellers/{id}/approve": {
+      "post": {
+        "operationId": "AdminController_approveSeller",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "summary": "POST /admin/sellers/:id/approve — 판매자 승인 (seller 도메인 재사용) + 감사 로그 기록",
+        "tags": [
+          "Admin"
+        ]
+      }
+    },
+    "/admin/users": {
+      "get": {
+        "operationId": "AdminController_listUsers",
+        "parameters": [
+          {
+            "name": "cursor",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "GET /admin/users — 사용자 목록 (cursor 페이지네이션)",
+        "tags": [
+          "Admin"
+        ]
+      }
+    },
+    "/admin/audit-logs": {
+      "get": {
+        "operationId": "AdminController_listAuditLogs",
+        "parameters": [
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "GET /admin/audit-logs — 관리자 조치 감사 로그 (최신순, 013)",
+        "tags": [
+          "Admin"
+        ]
+      }
+    }
+  },
+  "info": {
+    "title": "DOA Market API",
+    "description": "DOA Market 백엔드 HTTP 계약 (프론트 코드젠 SSOT).",
+    "version": "1.0.0",
+    "contact": {}
+  },
+  "tags": [],
+  "servers": [],
+  "components": {
+    "securitySchemes": {
+      "access-token": {
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "type": "http"
+      }
+    },
+    "schemas": {
+      "OrderItemInput": {
+        "type": "object",
+        "properties": {
+          "variantId": {
+            "type": "string"
+          },
+          "quantity": {
+            "type": "number",
+            "minimum": 1
+          }
+        },
+        "required": [
+          "variantId",
+          "quantity"
+        ]
+      },
+      "CreateOrderDto": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OrderItemInput"
+            }
+          },
+          "shippingAddress": {
+            "type": "object"
+          },
+          "userCouponId": {
+            "type": "string",
+            "description": "쿠폰 적용 시 userCoupon ID. 미전달 시 할인 없음 (SEC-FIND-004: 금액 직접 지정 금지)"
+          }
+        },
+        "required": [
+          "items",
+          "shippingAddress"
+        ]
+      },
+      "RegisterSellerDto": {
+        "type": "object",
+        "properties": {
+          "businessName": {
+            "type": "string"
+          },
+          "businessNumber": {
+            "type": "string"
+          },
+          "representativeName": {
+            "type": "string"
+          },
+          "contactPhone": {
+            "type": "string"
+          },
+          "businessAddress": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "businessName",
+          "businessNumber",
+          "representativeName"
+        ]
+      },
+      "UpdateSellerDto": {
+        "type": "object",
+        "properties": {
+          "businessName": {
+            "type": "string"
+          },
+          "businessNumber": {
+            "type": "string"
+          },
+          "representativeName": {
+            "type": "string"
+          },
+          "contactPhone": {
+            "type": "string",
+            "nullable": true
+          },
+          "businessAddress": {
+            "type": "string",
+            "nullable": true
+          }
+        }
+      },
+      "RejectSellerDto": {
+        "type": "object",
+        "properties": {
+          "rejectReason": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "rejectReason"
+        ]
+      },
+      "CreateProductDto": {
+        "type": "object",
+        "properties": {
+          "categoryId": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "price": {
+            "type": "number",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "categoryId",
+          "title",
+          "price"
+        ]
+      },
+      "UpdateProductDto": {
+        "type": "object",
+        "properties": {
+          "categoryId": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string",
+            "nullable": true
+          },
+          "price": {
+            "type": "number",
+            "minimum": 0
+          }
+        }
+      },
+      "CreateVariantDto": {
+        "type": "object",
+        "properties": {
+          "optionName": {
+            "type": "string"
+          },
+          "optionValue": {
+            "type": "string"
+          },
+          "sku": {
+            "type": "string"
+          },
+          "price": {
+            "type": "number",
+            "minimum": 0
+          },
+          "initialStock": {
+            "type": "number",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "optionName",
+          "optionValue",
+          "sku",
+          "price"
+        ]
+      },
+      "UpdateVariantDto": {
+        "type": "object",
+        "properties": {
+          "optionName": {
+            "type": "string"
+          },
+          "optionValue": {
+            "type": "string"
+          },
+          "sku": {
+            "type": "string"
+          },
+          "price": {
+            "type": "number",
+            "minimum": 0
+          }
+        }
+      },
+      "AddImageDto": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "format": "uri"
+          },
+          "displayOrder": {
+            "type": "number",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "url"
+        ]
+      },
+      "StockInDto": {
+        "type": "object",
+        "properties": {
+          "quantity": {
+            "type": "number",
+            "minimum": 1
+          }
+        },
+        "required": [
+          "quantity"
+        ]
+      },
+      "AddCartItemDto": {
+        "type": "object",
+        "properties": {
+          "variantId": {
+            "type": "string"
+          },
+          "quantity": {
+            "type": "number",
+            "minimum": 1
+          }
+        },
+        "required": [
+          "variantId",
+          "quantity"
+        ]
+      },
+      "UpdateCartItemDto": {
+        "type": "object",
+        "properties": {
+          "quantity": {
+            "type": "number",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "quantity"
+        ]
+      },
+      "CreateCouponDto": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "enum": [
+              "FIXED",
+              "PERCENTAGE"
+            ],
+            "type": "string"
+          },
+          "discountValue": {
+            "type": "string",
+            "description": "정액(원) 또는 비율(1~100, 정수). Decimal 문자열로 전달"
+          },
+          "maxDiscountAmount": {
+            "type": "string",
+            "description": "PERCENTAGE 전용 최대 할인 금액 상한"
+          },
+          "minOrderAmount": {
+            "type": "string",
+            "description": "최소 주문 금액 조건"
+          },
+          "expiresAt": {
+            "type": "string"
+          },
+          "totalQuantity": {
+            "type": "number",
+            "minimum": 1
+          },
+          "description": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "discountValue",
+          "expiresAt"
+        ]
+      },
+      "IssueCouponDto": {
+        "type": "object",
+        "properties": {
+          "targetUserId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "targetUserId"
+        ]
+      },
+      "CreatePaymentDto": {
+        "type": "object",
+        "properties": {
+          "orderId": {
+            "type": "string"
+          },
+          "idempotencyKey": {
+            "type": "string",
+            "description": "클라이언트 생성 UUID v4 — 멱등성 보장 (ADR-006). 헤더 미전달 시 body 값 사용.",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "orderId",
+          "idempotencyKey"
+        ]
+      },
+      "RegisterDto": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string",
+            "format": "email"
+          },
+          "password": {
+            "type": "string",
+            "minLength": 8
+          }
+        },
+        "required": [
+          "email",
+          "password"
+        ]
+      },
+      "LoginDto": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string",
+            "format": "email"
+          },
+          "password": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "email",
+          "password"
+        ]
+      },
+      "RefreshDto": {
+        "type": "object",
+        "properties": {
+          "refreshToken": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "refreshToken"
+        ]
+      },
+      "UpdateProfileDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "phone": {
+            "type": "string"
+          }
+        }
+      },
+      "CreateAddressDto": {
+        "type": "object",
+        "properties": {
+          "recipientName": {
+            "type": "string"
+          },
+          "phone": {
+            "type": "string"
+          },
+          "zipCode": {
+            "type": "string"
+          },
+          "address1": {
+            "type": "string"
+          },
+          "address2": {
+            "type": "string"
+          },
+          "isDefault": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "recipientName",
+          "phone",
+          "zipCode",
+          "address1"
+        ]
+      },
+      "UpdateAddressDto": {
+        "type": "object",
+        "properties": {
+          "recipientName": {
+            "type": "string"
+          },
+          "phone": {
+            "type": "string"
+          },
+          "zipCode": {
+            "type": "string"
+          },
+          "address1": {
+            "type": "string"
+          },
+          "address2": {
+            "type": "string",
+            "nullable": true
+          }
+        }
+      },
+      "AddWishlistDto": {
+        "type": "object",
+        "properties": {
+          "productId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "productId"
+        ]
+      },
+      "CreateShipmentDto": {
+        "type": "object",
+        "properties": {
+          "orderId": {
+            "type": "string",
+            "description": "송장을 등록할 주문 ID"
+          },
+          "carrier": {
+            "type": "string",
+            "description": "택배사"
+          },
+          "trackingNumber": {
+            "type": "string",
+            "description": "운송장 번호"
+          }
+        },
+        "required": [
+          "orderId",
+          "carrier",
+          "trackingNumber"
+        ]
+      },
+      "UpdateShipmentStatusDto": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "description": "변경할 배송 상태 (shipped · in_transit · delivered)",
+            "enum": [
+              "preparing",
+              "shipped",
+              "delivered",
+              "in_transit"
+            ]
+          },
+          "description": {
+            "type": "string",
+            "description": "추적 이력에 남길 설명 (선택)"
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "CreateSettlementDto": {
+        "type": "object",
+        "properties": {
+          "sellerId": {
+            "type": "string",
+            "description": "정산 대상 판매자 ID (users.sellers.id)"
+          },
+          "periodStart": {
+            "type": "string",
+            "description": "정산 기간 시작 (ISO 8601)"
+          },
+          "periodEnd": {
+            "type": "string",
+            "description": "정산 기간 종료 (ISO 8601)"
+          }
+        },
+        "required": [
+          "sellerId",
+          "periodStart",
+          "periodEnd"
+        ]
+      },
+      "CreateReviewDto": {
+        "type": "object",
+        "properties": {
+          "orderItemId": {
+            "type": "string"
+          },
+          "rating": {
+            "type": "number",
+            "description": "평점 1~5 정수 (FR-022·SC-034)",
+            "minimum": 1,
+            "maximum": 5
+          },
+          "content": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "orderItemId",
+          "rating",
+          "content"
+        ]
+      },
+      "UpdateReviewDto": {
+        "type": "object",
+        "properties": {
+          "rating": {
+            "type": "number",
+            "minimum": 1,
+            "maximum": 5
+          },
+          "content": {
+            "type": "string"
+          }
+        }
+      },
+      "PresignDto": {
+        "type": "object",
+        "properties": {
+          "purpose": {
+            "type": "string",
+            "enum": [
+              "PRODUCT_IMAGE",
+              "REVIEW_IMAGE",
+              "PROFILE"
+            ]
+          },
+          "contentType": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "purpose",
+          "contentType"
+        ]
+      },
+      "ConfirmFileDto": {
+        "type": "object",
+        "properties": {
+          "size": {
+            "type": "number",
+            "description": "업로드된 파일 크기(byte). 상한은 service(MAX_FILE_SIZE_BYTES)에서 검증.",
+            "minimum": 1
+          }
+        },
+        "required": [
+          "size"
+        ]
+      },
+      "CreateBannerDto": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string"
+          },
+          "imageUrl": {
+            "type": "string"
+          },
+          "linkUrl": {
+            "type": "string",
+            "description": "클릭 이동 대상 URL (없으면 비링크 배너)"
+          },
+          "position": {
+            "type": "string",
+            "description": "노출 위치 (미지정 시 기본 MAIN_TOP)",
+            "enum": [
+              "MAIN_TOP",
+              "MAIN_MIDDLE",
+              "MAIN_BOTTOM",
+              "SIDEBAR"
+            ]
+          },
+          "sortOrder": {
+            "type": "number",
+            "description": "동일 위치 내 정렬 순서 (오름차순)"
+          },
+          "isActive": {
+            "type": "boolean",
+            "description": "활성 여부 (미지정 시 기본 true)"
+          },
+          "startsAt": {
+            "type": "string",
+            "description": "노출 시작 (ISO 8601, null=즉시)"
+          },
+          "endsAt": {
+            "type": "string",
+            "description": "노출 종료 (ISO 8601, null=무제한)"
+          }
+        },
+        "required": [
+          "title",
+          "imageUrl"
+        ]
+      },
+      "UpdateBannerDto": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string"
+          },
+          "imageUrl": {
+            "type": "string"
+          },
+          "linkUrl": {
+            "type": "string",
+            "nullable": true
+          },
+          "position": {
+            "type": "string",
+            "enum": [
+              "MAIN_TOP",
+              "MAIN_MIDDLE",
+              "MAIN_BOTTOM",
+              "SIDEBAR"
+            ]
+          },
+          "sortOrder": {
+            "type": "number"
+          },
+          "isActive": {
+            "type": "boolean"
+          },
+          "startsAt": {
+            "type": "string",
+            "nullable": true
+          },
+          "endsAt": {
+            "type": "string",
+            "nullable": true
+          }
+        }
+      }
+    }
+  }
+}
