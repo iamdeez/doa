@@ -1,3 +1,26 @@
+## [006-search-notification-file] 구현 완료
+
+**변경 파일**:
+- `apps/backend/prisma/schema.prisma`: NotificationType(users) + FilePurpose·FileStatus(files) enum, Notification(users 스키마)·FileAsset(신규 files 스키마, `@@map("files")`) 모델 추가. `notifications(userId, isRead, createdAt desc)` 인덱스, `file_assets.key @unique` + `(ownerId, createdAt desc)` 인덱스. cross-schema 참조(userId·ownerId) plain String(FK 미선언). **금전 필드 없음**.
+- `apps/backend/prisma/migrations/20260629081946_006_search_notification_file/`: 마이그레이션(006 객체만 — 005 같은 드리프트 동반 없음).
+- `apps/backend/src/modules/search/*`: service·controller·module·constants·dto + repository(빈 클래스, providers 미등록) + service.spec(신규 5). 자체 테이블 없음 — ProductService DI read-only(P-001). GET /search/products(공개) page/size 정규화·클램핑·정렬.
+- `apps/backend/src/modules/notification/*`: repository·service·controller·module·constants·dto + service.spec(신규 8). create() 공개 진입점(export)·list(미읽음 우선·페이지네이션)·markRead(소유권 404/403)·markAllRead. JwtAuthGuard.
+- `apps/backend/src/modules/file/*`: repository·service·controller·module·dto + file-storage.port·stub-file-storage + service.spec(신규 7). presign(key {purpose}/{userId}/{uuid}·PENDING 레코드·결정적 URL)·getById·delete(소유권). R2 연동 FileStoragePort + StubFileStorage(무네트워크, FILE_STORAGE 토큰, P-002). JwtAuthGuard.
+- `apps/backend/src/modules/product/product.service.ts`·`product.repository.ts`: searchProducts 공개 메서드 추가 — additive, status `in [ACTIVE, OUT_OF_STOCK]`·title contains insensitive·Decimal 가격 필터·정렬 tiebreaker id desc·images include.
+- `apps/backend/test/search-notification-file.e2e-spec.ts`: AppModule 부팅 + 공개/인증 라우트(200/401/400) 검증(신규 4).
+- `apps/backend/test/static/cross-schema.spec.ts`: NotificationRepository·FileRepository 크로스 스키마 금지 규칙 반영(신규 2 규칙).
+
+**검증**: tsc 0 / unit 21 suites·209 PASS(005 대비 +20 = search 5 + notification 8 + file 7, 회귀 0) / e2e+static 15 suites·73 PASS(신규 search-notification-file.e2e 포함) / AppModule 부팅 정상(SearchModule·NotificationModule·FileModule 3개 DI 등록).
+
+**후속 작업 시 주의사항**:
+- **알림 이벤트 미연동(GAP-006-01)**: `NotificationService.create()` 가 export 됐으나 주문·배송·정산·리뷰 이벤트 핸들러에서 호출하는 연동이 미구현. 알림이 실제로 생성되는 경로가 없으므로(공개 진입점만 제공) 후속 spec 에서 도메인 이벤트 핸들러 연동 필요.
+- **파일 confirm 부재(GAP-006-02)**: FileStatus.PENDING → UPLOADED 확정 엔드포인트 부재. 클라이언트가 presigned URL 로 업로드 후 상태·size 갱신할 경로가 없어 고아 PENDING 레코드 누적 가능. 후속 confirm 엔드포인트 검토.
+- **`GET /files/:id` 소유권 미검증(SEC-FIND-006-01, Low)**: 파일 메타가 소유권 검증 없이 임의 인증 사용자에게 노출. 현재 public URL 모델과 정합하나 비공개 purpose 도입 시 ownerId 검증 또는 공개/비공개 구분 필요.
+- **presign 입력 무검증(SEC-FIND-006-02, Low)**: contentType allowlist·파일 크기 상한 미적용(size=0 placeholder). 실제 R2 presign 전환 시 content-type 바인딩·크기 제한 필요.
+- **search 빈 Repository**: `SearchRepository` 는 자체 테이블이 없어 빈 클래스이며 `SearchModule` providers 에 미등록. 검색 전용 데이터 소유가 정당화되기 전에는 등록·확장하지 않는다(P-001).
+
+---
+
 ## [005-shipping-settlement] 구현 완료 (경량 모드)
 
 > 경량 모드: plan/design/test-cases/DIFF 문서 생략. 요구사항·수용 기준·구현 결과는 `005-shipping-settlement/spec/spec.md` 1장에 통합. 변경 라인은 git base `289b36f` 기준 `git diff 289b36f -- apps/backend`로 재생성.
