@@ -468,3 +468,31 @@ export interface CreateBannerRequest {
 
 /** PATCH /admin/banners/:id — UpdateBannerDto(부분). */
 export type UpdateBannerRequest = Partial<CreateBannerRequest>;
+
+// ---------------------------------------------------------------------------
+// notification (009 — 인앱 알림)
+// ---------------------------------------------------------------------------
+
+export type NotificationType =
+  | 'ORDER_PLACED'
+  | 'ORDER_SHIPPED'
+  | 'SETTLEMENT_CREATED'
+  | 'REVIEW_RECEIVED';
+
+export interface Notification {
+  id: string;
+  userId: string;
+  type: NotificationType;
+  title: string;
+  body: string;
+  isRead: boolean;
+  createdAt: string;
+}
+
+/** GET /notifications — 페이지 응답. */
+export interface NotificationListResult {
+  items: Notification[];
+  total: number;
+  page: number;
+  size: number;
+}

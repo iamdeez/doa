@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, type ReactNode } from 'react';
 import { useAuth } from '@/lib/auth';
+import { ThemeToggle } from '@/components/theme-toggle';
 
 interface NavItem {
   href: string;
@@ -16,6 +17,7 @@ const NAV: NavItem[] = [
   { href: '/account/profile', label: '프로필', section: 'common' },
   { href: '/account/addresses', label: '배송지', section: 'common' },
   { href: '/account/wishlist', label: '위시리스트', section: 'common' },
+  { href: '/account/notifications', label: '알림', section: 'common' },
   { href: '/seller/products', label: '내 상품', section: 'seller' },
   { href: '/seller/orders', label: '주문·배송', section: 'seller' },
   { href: '/seller/coupons', label: '쿠폰', section: 'seller' },
@@ -84,12 +86,15 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
               </span>
             )}
           </div>
-          <button
-            onClick={() => void logout().then(() => router.replace('/login'))}
-            className="text-sm text-muted-foreground transition hover:text-foreground"
-          >
-            로그아웃
-          </button>
+          <div className="flex items-center gap-3">
+            <ThemeToggle />
+            <button
+              onClick={() => void logout().then(() => router.replace('/login'))}
+              className="text-sm text-muted-foreground transition hover:text-foreground"
+            >
+              로그아웃
+            </button>
+          </div>
         </header>
         <main className="flex-1 px-6 py-8">{children}</main>
       </div>

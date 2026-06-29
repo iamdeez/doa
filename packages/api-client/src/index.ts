@@ -16,6 +16,7 @@ import type {
   CreateVariantRequest,
   CursorPage,
   IssueCouponRequest,
+  NotificationListResult,
   PlatformOverview,
   UpdateBannerRequest,
   ListProductsQuery,
@@ -171,6 +172,16 @@ export function createApiClient(options: HttpClientOptions) {
         http.patch<Shipment>(`/shipments/${id}/status`, body),
       /** GET /shipments/:id/tracking — 추적 이력(권한 3축: 구매자/판매자). */
       tracking: (id: string) => http.get<ShipmentTracking[]>(`/shipments/${id}/tracking`),
+    },
+
+    notification: {
+      /** GET /notifications — 본인 알림(미읽음 우선·페이지). */
+      list: (page?: number, size?: number) =>
+        http.get<NotificationListResult>('/notifications', { query: { page, size } }),
+      /** PATCH /notifications/:id/read — 단건 읽음. */
+      markRead: (id: string) => http.patch<void>(`/notifications/${id}/read`),
+      /** PATCH /notifications/read-all — 전체 읽음. */
+      markAllRead: () => http.patch<{ updated: number }>('/notifications/read-all'),
     },
 
     stats: {
