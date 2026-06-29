@@ -168,4 +168,59 @@ export class OrderRepository {
       })),
     );
   }
+
+  // ── 통계 집계 (007-stats, additive) ─────────────────────────────────
+  // P-001: orders 스키마 내 집계만 수행. StatsService 가 OrderService DI 경유로 소비.
+  // 접근자: this.prisma.order (루트 클라이언트 직접). 통계 집계는 트랜잭션 외부 조회이며,
+  // tx 게터는 트랜잭션 외부에서 모델 델리게이트가 해소되지 않으므로 직접 접근으로 정확히 조회한다.
+
+  /** 전체 주문 수 — 플랫폼 통계용. */
+  async countAll(): Promise<number> {
+    return this.prisma.order.count();
+  }
+
+  /** completed 상태 주문 수 — 플랫폼 통계용. */
+  async countCompleted(): Promise<number> {
+    return this.prisma.order.count({
+      where: { status: OrderStatus.completed },
+    });
+  }
+
+  /**
+   * completed 주문의 totalAmount 합계 — 플랫폼 총 매출 (P-005: Decimal).
+   * 주문이 없으면 0 반환.
+   */
+  async sumCompletedTotalAmount(): Promise<Prisma.Decimal> {
+    const agg = await this.prisma.order.aggregate({
+      where: { status: OrderStatus.completed },
+      _sum: { totalAmount: true },
+    });
+    return agg._sum.totalAmount ?? new Prisma.Decimal(0);
+  }
+
+  /**
+   * 판매자별 completed 매출 요약 — saleAmount = Σ(unitPrice × quantity), 주문 건수.
+   * orders 스키마 내 order + order_items join (P-001). saleAmount 는 Decimal 정확 계산.
+   */
+  async getSellerCompletedSummary(
+    sellerId: string,
+  ): Promise<{ salesTotal: Prisma.Decimal; orderCount: number }> {
+    const orders = await this.prisma.order.findMany({
+      where: {
+        status: OrderStatus.completed,
+        items: { some: { sellerId } },
+      },
+      include: { items: { where: { sellerId } } },
+    });
+
+    const salesTotal = orders.reduce((acc, order) => {
+      const orderSum = order.items.reduce(
+        (s, item) => s.add(new Prisma.Decimal(item.unitPrice).mul(item.quantity)),
+        new Prisma.Decimal(0),
+      );
+      return acc.add(orderSum);
+    }, new Prisma.Decimal(0));
+
+    return { salesTotal, orderCount: orders.length };
+  }
 }

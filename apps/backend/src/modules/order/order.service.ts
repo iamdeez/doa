@@ -432,4 +432,29 @@ export class OrderService {
       actorType: ActorType.SYSTEM,
     });
   }
+
+  // ── 통계 집계 (007-stats, additive 공개 메서드) ──────────────────────
+  // StatsService 가 DI 경유로 소비 (P-001: stats 모듈은 orders 스키마 직접 접근 금지).
+
+  /** 전체 주문 수 — 플랫폼 통계. */
+  async countAllOrders(): Promise<number> {
+    return this.orderRepository.countAll();
+  }
+
+  /** completed 주문 수 — 플랫폼 통계. */
+  async countCompletedOrders(): Promise<number> {
+    return this.orderRepository.countCompleted();
+  }
+
+  /** completed 주문 총 매출 (P-005: Decimal). */
+  async sumCompletedSales(): Promise<Prisma.Decimal> {
+    return this.orderRepository.sumCompletedTotalAmount();
+  }
+
+  /** 판매자 본인 completed 매출 요약 — 매출 합계(Decimal) + 주문 건수. */
+  async getSellerSalesSummary(
+    sellerId: string,
+  ): Promise<{ salesTotal: Prisma.Decimal; orderCount: number }> {
+    return this.orderRepository.getSellerCompletedSummary(sellerId);
+  }
 }

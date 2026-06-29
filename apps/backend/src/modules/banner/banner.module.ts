@@ -1,10 +1,16 @@
 import { Module } from '@nestjs/common';
-import { BannerController } from './banner.controller';
+import { AuthSharedModule } from '../../shared/auth/auth-shared.module';
+import {
+  AdminBannerController,
+  BannerController,
+} from './banner.controller';
 import { BannerRepository } from './banner.repository';
 import { BannerService } from './banner.service';
 
 @Module({
-  controllers: [BannerController],
+  imports: [AuthSharedModule],
+  controllers: [AdminBannerController, BannerController],
   providers: [BannerService, BannerRepository],
+  exports: [BannerService],
 })
 export class BannerModule {}

@@ -41,6 +41,15 @@ export interface RecentView {
   viewedAt: Date;
 }
 
+/** 관리자 사용자 목록 항목 — 민감 필드(password) 제외 안전 요약 (007-admin). */
+export interface AdminUserListItem {
+  id: string;
+  email: string;
+  name: string | null;
+  phone: string | null;
+  createdAt: Date;
+}
+
 @Injectable()
 export class UserService {
   constructor(private readonly userRepository: UserRepository) {}
@@ -56,6 +65,33 @@ export class UserService {
   async updateProfile(userId: string, data: { name?: string; phone?: string }): Promise<UserProfile> {
     const user = await this.userRepository.updateUser(userId, data);
     return { id: user.id, email: user.email, name: user.name, phone: user.phone };
+  }
+
+  // ── 관리자 조회 (007-stats / 007-admin, additive 공개 메서드) ──────
+
+  /** 전체 사용자 수 — StatsService 가 DI 경유로 소비 (P-001 경계). */
+  async countAllUsers(): Promise<number> {
+    return this.userRepository.countAll();
+  }
+
+  /**
+   * 관리자 사용자 목록 — AdminService 가 DI 경유로 소비.
+   * password 등 민감 필드 제외하고 안전한 요약만 반환. cursor 페이지네이션.
+   */
+  async listUsersForAdmin(
+    cursor: string | undefined,
+    take: number,
+  ): Promise<{ items: AdminUserListItem[]; nextCursor: string | null }> {
+    const rows = await this.userRepository.listPaginated(cursor, take);
+    const items = rows.map((u) => ({
+      id: u.id,
+      email: u.email,
+      name: u.name,
+      phone: u.phone,
+      createdAt: u.createdAt,
+    }));
+    const nextCursor = rows.length === take ? rows[rows.length - 1].id : null;
+    return { items, nextCursor };
   }
 
   // ── Address ───────────────────────────────────────────────────────

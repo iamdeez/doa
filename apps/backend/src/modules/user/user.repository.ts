@@ -18,6 +18,21 @@ export class UserRepository {
     return this.prisma.user.update({ where: { id }, data });
   }
 
+  /** 전체 사용자 수 — 관리자 통계용 (007-stats, additive). */
+  async countAll(): Promise<number> {
+    return this.prisma.user.count();
+  }
+
+  /** 사용자 목록 — 관리자 조회용 cursor 페이지네이션 (007-admin, additive). */
+  async listPaginated(cursor: string | undefined, take: number): Promise<User[]> {
+    return this.prisma.user.findMany({
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      cursor: cursor ? { id: cursor } : undefined,
+      skip: cursor ? 1 : 0,
+      take,
+    });
+  }
+
   // ── Address ──────────────────────────────────────────────────────
 
   async findAddressById(id: string): Promise<Address | null> {

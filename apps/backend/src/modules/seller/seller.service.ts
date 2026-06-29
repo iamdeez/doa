@@ -105,4 +105,16 @@ export class SellerService {
     }
     return { id: seller.id, userId: seller.userId };
   }
+
+  // ── 관리자 조회 (007-stats / 007-admin, additive 공개 메서드) ──────
+
+  /** 전체 판매자 수 — StatsService 가 DI 경유로 소비 (P-001 경계). */
+  async countAllSellers(): Promise<number> {
+    return this.sellerRepository.countAll();
+  }
+
+  /** 상태별 판매자 목록 — AdminService 가 DI 경유로 소비. 승인 대기(PENDING) 조회 등. */
+  async listByStatus(status: SellerStatus): Promise<SellerProfile[]> {
+    return this.sellerRepository.listByStatus(status);
+  }
 }

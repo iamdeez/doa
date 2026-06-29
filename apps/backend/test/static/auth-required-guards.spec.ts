@@ -65,6 +65,14 @@ const AUTH_REQUIRED_CONTROLLERS = [
   // review.controller.ts 의 ReviewController(쓰기) 는 JwtAuthGuard 적용
   // (ProductReviewController 공개 열람은 guard 미적용 — 이 목록 외)
   'src/modules/review/review.controller.ts',
+  // ── 007-banner/stats/admin ──
+  // banner.controller.ts 의 AdminBannerController 는 JwtAuthGuard+AdminGuard 적용
+  // (공개 BannerController GET /banners 는 guard 미적용 — 의도적 공개)
+  'src/modules/banner/banner.controller.ts',
+  // stats.controller.ts 의 AdminStatsController·SellerStatsController 모두 JwtAuthGuard 적용
+  'src/modules/stats/stats.controller.ts',
+  // admin.controller.ts 의 AdminController 는 JwtAuthGuard+AdminGuard 적용
+  'src/modules/admin/admin.controller.ts',
 ];
 
 // 전역 가드 설정 파일 (main.ts 또는 app.module.ts) — AppGuard / JwtAuthGuard 전역 등록 확인

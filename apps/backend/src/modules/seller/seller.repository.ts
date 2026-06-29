@@ -27,6 +27,19 @@ export class SellerRepository {
     return this.prisma.seller.findUnique({ where: { id } });
   }
 
+  /** 전체 판매자 수 — 관리자 통계용 (007-stats, additive). */
+  async countAll(): Promise<number> {
+    return this.prisma.seller.count();
+  }
+
+  /** 상태별 판매자 목록 — 관리자 조회용 (007-admin, additive). 최신순. */
+  async listByStatus(status: SellerStatus): Promise<Seller[]> {
+    return this.prisma.seller.findMany({
+      where: { status },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
   async updateSeller(
     id: string,
     data: {

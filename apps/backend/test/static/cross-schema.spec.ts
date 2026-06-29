@@ -225,6 +225,46 @@ const CROSS_SCHEMA_RULES: Array<{
     ],
     label: 'FileRepository (006)',
   },
+  // ── 007-banner/stats/admin 규칙 ──
+  // BannerRepository: 자신의 소유 테이블(admin.banners)만 접근.
+  // 타 스키마(users/products/commerce/orders/payments) 모델 직접 참조 금지.
+  {
+    file: 'src/modules/banner/banner.repository.ts',
+    forbiddenModels: [
+      ...PRODUCTS_SCHEMA_MODELS,
+      ...USERS_SCHEMA_MODELS,
+      ...COMMERCE_SCHEMA_MODELS,
+      ...ORDERS_SCHEMA_MODELS,
+      ...PAYMENTS_SCHEMA_MODELS,
+    ],
+    label: 'BannerRepository (007)',
+  },
+  // StatsRepository: 자체 테이블 없음 — 집계는 OrderService/UserService/SellerService DI 경유.
+  // 어떤 스키마 모델도 직접 참조하지 않음.
+  {
+    file: 'src/modules/stats/stats.repository.ts',
+    forbiddenModels: [
+      ...PRODUCTS_SCHEMA_MODELS,
+      ...USERS_SCHEMA_MODELS,
+      ...COMMERCE_SCHEMA_MODELS,
+      ...ORDERS_SCHEMA_MODELS,
+      ...PAYMENTS_SCHEMA_MODELS,
+    ],
+    label: 'StatsRepository (007)',
+  },
+  // AdminRepository: 자체 테이블 없음 — 운영 조치는 SellerService/UserService DI 경유.
+  // 어떤 스키마 모델도 직접 참조하지 않음.
+  {
+    file: 'src/modules/admin/admin.repository.ts',
+    forbiddenModels: [
+      ...PRODUCTS_SCHEMA_MODELS,
+      ...USERS_SCHEMA_MODELS,
+      ...COMMERCE_SCHEMA_MODELS,
+      ...ORDERS_SCHEMA_MODELS,
+      ...PAYMENTS_SCHEMA_MODELS,
+    ],
+    label: 'AdminRepository (007)',
+  },
 ];
 
 /**

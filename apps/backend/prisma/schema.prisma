@@ -723,3 +723,37 @@ model FileAsset {
   @@map("files")
   @@schema("files")
 }
+
+// ============================================================
+// admin 스키마 — 007-banner 노출 배너 테이블
+// ============================================================
+
+/// 배너 노출 위치. 공개 조회 시 위치별 그룹핑·정렬에 사용.
+enum BannerPosition {
+  MAIN_TOP
+  MAIN_MIDDLE
+  MAIN_BOTTOM
+  SIDEBAR
+
+  @@schema("admin")
+}
+
+/// 운영 노출 배너. admin 스키마 소유 (007 banner).
+/// 공개 노출(GET /banners)은 isActive=true + 노출기간(startsAt≤now≤endsAt, null=무제한) 필터를
+/// BannerService 에서 적용한다. linkUrl 은 클릭 이동 대상(없으면 비링크 배너).
+model Banner {
+  id        String         @id @default(cuid())
+  title     String
+  imageUrl  String
+  linkUrl   String?
+  position  BannerPosition @default(MAIN_TOP)
+  sortOrder Int            @default(0)
+  isActive  Boolean        @default(true)
+  startsAt  DateTime?
+  endsAt    DateTime?
+  createdAt DateTime       @default(now())
+
+  @@index([isActive, position, sortOrder])
+  @@map("banners")
+  @@schema("admin")
+}
