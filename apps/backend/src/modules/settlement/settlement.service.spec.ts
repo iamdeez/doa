@@ -11,6 +11,7 @@
 import { ForbiddenException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { Prisma, SettlementStatus } from '@prisma/client';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { SettlementService } from './settlement.service';
 import { SettlementRepository } from './settlement.repository';
 import { PrismaService } from '../../shared/prisma/prisma.service';
@@ -38,10 +39,13 @@ const mockSellerService = {
 
 const mockPrismaService = {
   runInTransaction: jest.fn().mockImplementation((fn: () => unknown) => fn()),
+  onAfterCommit: jest.fn().mockImplementation((fn: () => unknown) => fn()),
   get tx() {
     return this;
   },
 };
+
+const mockEventEmitter = { emit: jest.fn() };
 
 const PERIOD_START = new Date('2026-06-01');
 const PERIOD_END = new Date('2026-06-30');
@@ -60,6 +64,7 @@ describe('SettlementService', () => {
         { provide: PrismaService, useValue: mockPrismaService },
         { provide: OrderService, useValue: mockOrderService },
         { provide: SellerService, useValue: mockSellerService },
+        { provide: EventEmitter2, useValue: mockEventEmitter },
       ],
     }).compile();
 

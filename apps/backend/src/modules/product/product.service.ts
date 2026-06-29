@@ -258,6 +258,15 @@ export class ProductService {
     return this.productRepository.listBySeller(seller.id);
   }
 
+  /**
+   * productId → 판매자 sellerId 해석 (009 알림 연동, additive read-only).
+   * NotificationEventsHandler 가 리뷰 알림 수신자(판매자) 해석에 사용. 미존재 시 null.
+   */
+  async getSellerIdByProductId(productId: string): Promise<string | null> {
+    const product = await this.productRepository.findById(productId);
+    return product?.sellerId ?? null;
+  }
+
   // ── Commerce 지원 (cart·order) ────────────────────────────────────
 
   /**

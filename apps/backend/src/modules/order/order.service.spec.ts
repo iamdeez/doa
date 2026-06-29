@@ -24,6 +24,7 @@ import {
   ForbiddenException,
 } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ActorType, OrderStatus, Prisma } from '@prisma/client';
 import { OrderService } from './order.service';
 import { OrderRepository } from './order.repository';
@@ -80,6 +81,9 @@ const mockPrismaService = {
   onAfterCommit: jest.fn().mockImplementation((cb: () => unknown) => Promise.resolve(cb())),
   get tx() { return this; },
 };
+
+// 009: OrderService 가 order.created 이벤트를 발행하므로 EventEmitter2 mock 필요
+const mockEventEmitter = { emit: jest.fn() };
 
 // T041 (004 spec): CouponService mock — §F provider 등록 + SC-012/019/020/021/023 테스트
 const mockCouponService = {
@@ -168,6 +172,7 @@ describe('OrderService', () => {
         { provide: SellerService, useValue: mockSellerService },
         { provide: PrismaService, useValue: mockPrismaService },
         { provide: CouponService, useValue: mockCouponService },
+        { provide: EventEmitter2, useValue: mockEventEmitter },
       ],
     }).compile();
 

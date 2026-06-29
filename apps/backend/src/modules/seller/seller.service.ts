@@ -117,4 +117,13 @@ export class SellerService {
   async listByStatus(status: SellerStatus): Promise<SellerProfile[]> {
     return this.sellerRepository.listByStatus(status);
   }
+
+  /**
+   * sellerId → 판매자 소유 userId 해석 (009 알림 연동, additive read-only).
+   * NotificationEventsHandler 가 정산·리뷰 알림 수신자(판매자 userId) 해석에 사용. 미존재 시 null.
+   */
+  async getUserIdBySellerId(sellerId: string): Promise<string | null> {
+    const seller = await this.sellerRepository.findById(sellerId);
+    return seller?.userId ?? null;
+  }
 }

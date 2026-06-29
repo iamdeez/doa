@@ -1,10 +1,12 @@
 import { Injectable } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Prisma, Settlement, SettlementStatus } from '@prisma/client';
 import { PrismaService } from '../../shared/prisma/prisma.service';
 import { OrderService } from '../order/order.service';
 import { SellerService } from '../seller/seller.service';
 import { SettlementRepository, SettlementWithItems } from './settlement.repository';
 import { COMMISSION_RATE } from './settlement.constants';
+import { SETTLEMENT_EVENTS } from './settlement.events';
 
 @Injectable()
 export class SettlementService {
@@ -13,6 +15,7 @@ export class SettlementService {
     private readonly prisma: PrismaService,
     private readonly orderService: OrderService,
     private readonly sellerService: SellerService,
+    private readonly eventEmitter: EventEmitter2,
   ) {}
 
   // ── 정산 생성 (관리자/배치) ───────────────────────────────────────
@@ -84,6 +87,15 @@ export class SettlementService {
       }
 
       return created;
+    });
+
+    // 정산 생성 도메인 이벤트 (009 알림 연동, additive) — 커밋 후 발행.
+    // 알림(SETTLEMENT_CREATED) 구독자가 sellerId 로 판매자 userId 해석. 발행 실패는 정산에 영향 없음.
+    await this.prisma.onAfterCommit(() => {
+      this.eventEmitter.emit(SETTLEMENT_EVENTS.CREATED, {
+        settlementId: settlement.id,
+        sellerId,
+      });
     });
 
     const result = await this.settlementRepository.findById(settlement.id);

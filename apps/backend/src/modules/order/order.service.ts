@@ -7,9 +7,11 @@ import {
   NotFoundException,
   forwardRef,
 } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { randomUUID } from 'node:crypto';
 import { ActorType, Order, OrderStatus, PaymentStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../../shared/prisma/prisma.service';
+import { ORDER_EVENTS } from './order.events';
 import { CartService } from '../cart/cart.service';
 import { InventoryService } from '../inventory/inventory.service';
 import { ProductService } from '../product/product.service';
@@ -31,6 +33,7 @@ export class OrderService {
     @Inject(forwardRef(() => PaymentService))
     private readonly paymentService: PaymentService,
     private readonly couponService: CouponService,
+    private readonly eventEmitter: EventEmitter2,
   ) {}
 
   // ── 주문 생성 (T031) ───────────────────────────────────────────────
@@ -147,6 +150,12 @@ export class OrderService {
 
       // 6. 장바구니에서 주문된 항목 제거 (동일 트랜잭션 내)
       await this.cartService.removeItems(userId, items.map((i) => i.variantId));
+    });
+
+    // 주문 생성 도메인 이벤트 (009 알림 연동, additive) — 커밋 후 발행.
+    // 알림(ORDER_PLACED) 구독자가 userId(구매자)로 수신자 해석. 발행 실패는 주문에 영향 없음.
+    await this.prisma.onAfterCommit(() => {
+      this.eventEmitter.emit(ORDER_EVENTS.CREATED, { orderId, userId });
     });
 
     const order = await this.orderRepository.findById(orderId);
