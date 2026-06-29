@@ -1,3 +1,89 @@
+## [007-admin-console] 구현 완료
+
+> v1.1.0 의 일곱 번째 차수 — **FRONTEND-PLAN Phase 3(관리자 운영 콘솔 — 플랫폼 통계·전체 정산·사용자·감사
+> 로그·판매자 승인·배너 관리)**. base `1a6d70d` → `e7d8ebb`. 커밋 1개: `e7d8ebb`(Phase 3 관리자 콘솔).
+> 변경 라인은 `git diff 1a6d70d e7d8ebb -- apps/console packages` 로 재생성(9 files, +586/-13).
+> **마이그레이션 없음**(DB 스키마 변경 0 — 프론트 console 화면 + 공유 패키지). **신규 의존성 0**(`package.json`
+> 변경 없음). 선택 단계 전부 N. 004·005·006(판매자 화면) 위에 관리자 운영 화면을 올린다.
+
+**변경 파일**:
+- `apps/console/app/(dashboard)/admin/stats/page.tsx`(신규): 플랫폼 통계. `useQuery(['admin','stats'],
+  api.admin.statsOverview)`(`GET /admin/stats/overview` → `PlatformOverview`)로 조회 후 `StatCard` 5개(총
+  매출(완료) `formatKRW(totalSales)`·총 주문·완료 주문·총 사용자·총 판매자 — 각 `toLocaleString('ko-KR')`).
+  로딩·에러 분기.
+- `apps/console/app/(dashboard)/admin/settlements/page.tsx`(신규): 전체 정산. `api.admin.settlements()`
+  (`GET /admin/settlements` → `SettlementView[]` — 006 타입 재사용)로 조회 후 `@doa/ui` Table 렌더(판매자
+  `sellerId` 앞 12자·총 매출·수수료 `−formatKRW`·지급액·상태 Badge). status `completed`→"지급완료"(success)·
+  그 외→"정산대기"(warning). 빈 목록 분기.
+- `apps/console/app/(dashboard)/admin/users/page.tsx`(신규): 사용자. `useInfiniteQuery` + `api.admin.
+  users(cursor)`(`GET /admin/users` → `CursorPage<AdminUser>`)·`getNextPageParam`=`last.nextCursor`·`pages.
+  flatMap(items)` Table(이메일·이름·연락처·가입일). `hasNextPage` 시 "더 보기" Button(`isFetchingNextPage`
+  비활성화).
+- `apps/console/app/(dashboard)/admin/audit-logs/page.tsx`(신규): 감사 로그. `api.admin.auditLogs()`
+  (`GET /admin/audit-logs` → `AdminAuditLog[]`, 013 append-only)로 조회 후 Table(일시·관리자 `adminId` 앞
+  12자·조치 `Badge` info·대상 `targetType`·`targetId` 앞 12자). 빈 목록 분기.
+- `apps/console/app/(dashboard)/admin/sellers/page.tsx`(수정 — 플레이스홀더→실데이터): 판매자 승인. `api.admin.
+  pendingSellers()`(`GET /admin/sellers/pending` → `AdminSeller[]`)로 조회 후 Table(상호·대표자·사업자번호·
+  연락처·조치). 행 승인 Button → `api.admin.approveSeller(s.id)`(`POST /admin/sellers/:id/approve`, `useMutation`)
+  `onSuccess` invalidate `['admin','pendingSellers']`. 처리 중 `approve.variables === s.id` 행만 비활성화·
+  "처리 중…".
+- `apps/console/app/(dashboard)/admin/banners/page.tsx`(신규): 배너 관리(CRUD). `api.admin.banners()`
+  (`GET /admin/banners` → `Banner[]`) Table(제목·위치·순서·활성 Badge·조치). `CreateBannerDialog`(Radix Dialog —
+  `Input`·`Select`(`BannerPosition` 4종)·`createBanner`(`POST /admin/banners`) `onSuccess` invalidate+닫기+
+  reset). 활성 토글(`updateBanner`(`PATCH /admin/banners/:id`) `{ isActive: !b.isActive }`)·삭제(`deleteBanner`
+  (`DELETE /admin/banners/:id`) danger 버튼). 세 mutation 모두 `onSuccess` invalidate. 삭제는 즉시(확인
+  다이얼로그 없음 — 후속). 기존 `lib/order.ts` `formatKRW` 재사용.
+- `packages/shared-types/src/index.ts`: admin view 타입 9종(`PlatformOverview`·`AdminUser`·`AdminAuditLog`·
+  `SellerApprovalStatus`·`AdminSeller`·`BannerPosition`·`Banner`·`CreateBannerRequest`·`UpdateBannerRequest`).
+  백엔드 응답이 OpenAPI 에 미정의(Prisma 엔티티 반환 — 001 coverage-gap)이므로 전이형 view 타입으로 한시 정의.
+  금전 필드(`PlatformOverview.totalSales`)는 Decimal→JSON 직렬화상 **문자열**. 정산은 006 `SettlementView`
+  재사용(신규 정산 타입 0).
+- `packages/api-client/src/index.ts`: `createApiClient` 반환에 `admin` 도메인 facade 10 메서드(`statsOverview`·
+  `settlements`·`users`·`auditLogs`·`pendingSellers`·`approveSeller`·`banners`·`createBanner`·`updateBanner`·
+  `deleteBanner`) 추가. `api.http` 기반(`http.get/post/patch/delete`), view 타입을 응답 제네릭으로 사용.
+  `admin.users` 는 `{ query: { cursor, limit } }`, `admin.auditLogs` 는 `{ query: { limit } }`. 기존 facade
+  (auth·user·seller·catalog·inventory·order·shipping·stats·settlement·coupon)·`client`·`http` 불변.
+- `apps/console/app/(dashboard)/layout.tsx`: AppShell `NAV` 관리자 섹션에 "배너"(`/admin/banners`)·"전체 정산"
+  (`/admin/settlements`)·"플랫폼 통계"(`/admin/stats`)·"사용자"(`/admin/users`)·"감사 로그"(`/admin/audit-logs`)
+  5개 추가(기존 "판매자 승인" 위에 누적). `visible` 필터는 seller 섹션만 `isSeller` 로 가림(admin 항상 노출 —
+  AdminGuard 백엔드 강제).
+
+**검증**: `pnpm --filter console typecheck` 0 error / `pnpm --filter console build` 22 라우트 PASS(신규
+`/admin/stats`·`/admin/settlements`·`/admin/users`·`/admin/audit-logs`·`/admin/banners` 포함) / 기존 화면(상품·
+계정·주문·배송·판매자 통계/정산/쿠폰) 동작 회귀 0. 신규 단위/e2e 테스트 0(UI 화면 — `git diff 1a6d70d e7d8ebb
+-- apps/console packages` 에 `*.spec.ts`·`*.e2e.ts` 변경 0, 검증은 타입체크 + 빌드 + 정적 구조 리뷰로 갈음).
+변경 라인 직접 카운트(banners +172·shared-types +77·sellers +72/-13·users +71·settlements +64·audit-logs +61·
+stats +32·api-client +32·layout +5 = 9 files +586/-13). 마이그레이션 없음(DB 스키마 변경 0). 신규 의존 0
+(`package.json` 변경 없음). `@doa/ui`(StatCard·Select·Table·Dialog)·`lib/order.ts`(formatKRW)·006
+`SettlementView` 기존 자산 재사용(변경 0).
+
+**해결**: **FRONTEND-PLAN Phase 3(관리자 운영 콘솔) RESOLVED**. 004·005·006 이 완성한 Phase 1~2(판매자 화면)
+위에 관리자 플랫폼 통계·전체 정산·사용자(cursor 무한 스크롤)·감사 로그·판매자 승인·배너 관리 운영 화면 6종을
+제공. 006 과 동일하게 응답 스키마가 OpenAPI 미정의인 도메인이라 타입드 client 대신 전이형 view 타입 +
+`api.admin.*` facade 채택(정산은 006 `SettlementView` 재사용). 판매자 승인 화면의 플레이스홀더를 실데이터+승인
+mutation 으로 교체. 권한은 백엔드 `AdminGuard` 가 전 admin 라우트에 강제(UI 네비는 권한 필터 없이 노출 —
+클라이언트 권한 차단은 후속).
+
+**후속 작업 시 주의사항**:
+- **응답 view 타입 한시성(006·004·001 연속)**: 관리자 통계·정산·사용자·감사·판매자·배너 응답은 백엔드가
+  Prisma 엔티티를 반환하고 OpenAPI 응답 content 가 미주석이다. 003 타입드 client 대신 `@doa/shared-types`
+  전이형 view 타입(금전 string) 9종을 한시 정의했다. 백엔드 응답 DTO + `@ApiResponse({ type })` 보강 후
+  코드젠 재생성하면 생성 타입으로 대체 가능(GAP-007-01 (5)). 금전 필드는 Decimal→문자열이므로 대체 후에도
+  `string` 유지 확인(P-005).
+- **권한은 백엔드 AdminGuard 강제(UI 표시 분기 없음)**: admin 네비는 권한 필터 없이 모든 인증 사용자에게
+  노출된다(`visible` 필터는 seller 섹션만 `isSeller` 로 가림). 데이터 보호는 백엔드 `AdminGuard`(403)가
+  강제하나, 비관리자에게 admin 메뉴가 보이는 UX 결함이 있다. 후속에서 `isAdmin` UI 필터 추가 권고(GAP-007-01
+  (2)).
+- **배너 삭제 즉시 수행**: 배너 삭제는 `danger` 버튼 클릭 시 확인 다이얼로그 없이 즉시 호출된다. 후속에서
+  `AlertDialog` 재확인 추가 권고(GAP-007-01 (1)). 배너 편집(활성 토글 외 필드 수정) UI 도 미지원(GAP-007-01 (3)).
+- **`SettlementView` 재사용**: admin 전체 정산은 006 의 `SettlementView` 를 재사용한다(id·sellerId·periodStart/
+  End·totalSales·commission·payoutAmount·status·createdAt). admin 화면은 `sellerId` 컬럼을 표시한다(판매자 본인
+  화면은 정산 기간 표시). 향후 admin/판매자 정산 응답 형태가 분기하면 타입 분리 필요.
+- **admin/coupons 는 별도(008)**: 관리자 전역 쿠폰 화면(`/admin/coupons`)은 본 007 범위 외(facade·네비 미포함).
+  008 차수에서 추가된다.
+
+---
+
 ## [006-seller-coupon-settlement-stats] 구현 완료
 
 > v1.1.0 의 여섯 번째 차수 — **FRONTEND-PLAN Phase 2(판매자 부가 운영 화면 — 통계·정산·쿠폰) + console 전
