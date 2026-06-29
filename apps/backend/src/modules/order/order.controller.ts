@@ -9,10 +9,12 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
+import { ApiOkResponse } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../shared/auth/jwt-auth.guard';
 import { CurrentUser } from '../../shared/auth/current-user.decorator';
 import { AuthenticatedUser } from '../../shared/auth/jwt.strategy';
 import { CreateOrderDto } from './dto/create-order.dto';
+import { OrderDetailResponse, OrderListResponse } from './dto/order-response.dto';
 import { OrderService } from './order.service';
 
 @Controller('orders')
@@ -36,6 +38,7 @@ export class OrderController {
 
   /** GET /orders — 내 주문 목록 */
   @Get()
+  @ApiOkResponse({ type: OrderListResponse })
   async listMyOrders(
     @CurrentUser() user: AuthenticatedUser,
     @Query('cursor') cursor?: string,
@@ -50,6 +53,7 @@ export class OrderController {
 
   /** GET /orders/:orderId — 주문 상세 */
   @Get(':orderId')
+  @ApiOkResponse({ type: OrderDetailResponse })
   async getDetail(
     @CurrentUser() user: AuthenticatedUser,
     @Param('orderId') orderId: string,

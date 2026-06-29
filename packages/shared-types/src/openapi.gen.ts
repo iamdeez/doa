@@ -1231,6 +1231,86 @@ export interface components {
             /** @description 쿠폰 적용 시 userCoupon ID. 미전달 시 할인 없음 (SEC-FIND-004: 금액 직접 지정 금지) */
             userCouponId?: string;
         };
+        OrderAddressSnapshotResponse: {
+            recipientName: string;
+            phone: string;
+            zipCode: string;
+            address1: string;
+            address2?: string | null;
+        };
+        OrderResponse: {
+            id: string;
+            /** @description cross-schema plain String — users.users.id (P-001) */
+            userId: string;
+            /** @enum {string} */
+            status: "pending" | "confirmed" | "preparing" | "shipped" | "delivered" | "completed" | "cancelled";
+            /**
+             * @description 금전 — 총 주문 금액 (P-005)
+             * @example 30000.00
+             */
+            totalAmount: string;
+            /**
+             * @description 금전 — 할인 금액 (P-005)
+             * @example 0
+             */
+            discountAmount: string;
+            /** @description 주문 시점 배송지 스냅샷 (FR-016) */
+            shippingAddressSnapshot: components["schemas"]["OrderAddressSnapshotResponse"];
+            /** Format: date-time */
+            deliveredAt?: string | null;
+            /** Format: date-time */
+            completedAt?: string | null;
+            /** Format: date-time */
+            createdAt: string;
+        };
+        OrderListResponse: {
+            items: components["schemas"]["OrderResponse"][];
+            /** @description 다음 페이지 cursor (없으면 null) */
+            nextCursor?: string | null;
+        };
+        OrderItemResponse: {
+            id: string;
+            orderId: string;
+            variantId: string;
+            productId: string;
+            /** @description cross-schema plain String — users.sellers.id (P-001) */
+            sellerId: string;
+            quantity: number;
+            /**
+             * @description 금전 — 주문 시점 단가 스냅샷 (P-005)
+             * @example 30000.00
+             */
+            unitPrice: string;
+            optionName: string;
+            optionValue: string;
+            productTitle: string;
+        };
+        OrderDetailResponse: {
+            id: string;
+            /** @description cross-schema plain String — users.users.id (P-001) */
+            userId: string;
+            /** @enum {string} */
+            status: "pending" | "confirmed" | "preparing" | "shipped" | "delivered" | "completed" | "cancelled";
+            /**
+             * @description 금전 — 총 주문 금액 (P-005)
+             * @example 30000.00
+             */
+            totalAmount: string;
+            /**
+             * @description 금전 — 할인 금액 (P-005)
+             * @example 0
+             */
+            discountAmount: string;
+            /** @description 주문 시점 배송지 스냅샷 (FR-016) */
+            shippingAddressSnapshot: components["schemas"]["OrderAddressSnapshotResponse"];
+            /** Format: date-time */
+            deliveredAt?: string | null;
+            /** Format: date-time */
+            completedAt?: string | null;
+            /** Format: date-time */
+            createdAt: string;
+            items: components["schemas"]["OrderItemResponse"][];
+        };
         RegisterSellerDto: {
             businessName: string;
             businessNumber: string;
@@ -1346,6 +1426,25 @@ export interface components {
         StockInDto: {
             quantity: number;
         };
+        CartItemResponse: {
+            variantId: string;
+            productId: string;
+            /** @description cross-schema plain String — users.sellers.id (P-001) */
+            sellerId: string;
+            quantity: number;
+            /**
+             * @description 금전 — 단가 스냅샷 (P-005)
+             * @example 30000.00
+             */
+            unitPrice: string;
+            optionName: string;
+            optionValue: string;
+            productTitle: string;
+            sku: string;
+        };
+        CartResponse: {
+            items: components["schemas"]["CartItemResponse"][];
+        };
         AddCartItemDto: {
             variantId: string;
             quantity: number;
@@ -1420,6 +1519,21 @@ export interface components {
             /** @description 운송장 번호 */
             trackingNumber: string;
         };
+        ShipmentResponse: {
+            id: string;
+            /** @description cross-module plain String — orders.orders.id (P-001) */
+            orderId: string;
+            /** @enum {string} */
+            status: "preparing" | "shipped" | "in_transit" | "delivered";
+            carrier: string;
+            trackingNumber: string;
+            /** Format: date-time */
+            shippedAt?: string | null;
+            /** Format: date-time */
+            deliveredAt?: string | null;
+            /** Format: date-time */
+            createdAt: string;
+        };
         UpdateShipmentStatusDto: {
             /**
              * @description 변경할 배송 상태 (shipped · in_transit · delivered)
@@ -1428,6 +1542,15 @@ export interface components {
             status: "preparing" | "shipped" | "delivered" | "in_transit";
             /** @description 추적 이력에 남길 설명 (선택) */
             description?: string;
+        };
+        ShipmentTrackingResponse: {
+            id: string;
+            shipmentId: string;
+            /** @enum {string} */
+            status: "preparing" | "shipped" | "in_transit" | "delivered";
+            description: string;
+            /** Format: date-time */
+            occurredAt: string;
         };
         CreateSettlementDto: {
             /** @description 정산 대상 판매자 ID (users.sellers.id) */
@@ -1535,7 +1658,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["OrderListResponse"];
+                };
             };
         };
     };
@@ -1578,7 +1703,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": Record<string, never>;
+                    "application/json": components["schemas"]["OrderDetailResponse"];
                 };
             };
         };
@@ -2136,7 +2261,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["CartResponse"];
+                };
             };
         };
     };
@@ -2158,7 +2285,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": Record<string, never>[];
+                    "application/json": components["schemas"]["CartItemResponse"][];
                 };
             };
         };
@@ -2183,7 +2310,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": Record<string, never>[];
+                    "application/json": components["schemas"]["CartItemResponse"][];
                 };
             };
         };
@@ -2747,12 +2874,13 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            /** @description 송장 미존재 시 null */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": Record<string, never>;
+                    "application/json": components["schemas"]["ShipmentResponse"];
                 };
             };
         };
@@ -2770,11 +2898,13 @@ export interface operations {
             };
         };
         responses: {
-            201: {
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ShipmentResponse"];
+                };
             };
         };
     };
@@ -2797,7 +2927,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ShipmentResponse"];
+                };
             };
         };
     };
@@ -2816,7 +2948,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ShipmentTrackingResponse"][];
+                };
             };
         };
     };

@@ -54,7 +54,14 @@
         ],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderListResponse"
+                }
+              }
+            }
           }
         },
         "summary": "GET /orders — 내 주문 목록",
@@ -82,7 +89,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object"
+                  "$ref": "#/components/schemas/OrderDetailResponse"
                 }
               }
             }
@@ -842,7 +849,14 @@
         "parameters": [],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CartResponse"
+                }
+              }
+            }
           }
         },
         "summary": "GET /cart — 장바구니 조회",
@@ -873,7 +887,7 @@
                 "schema": {
                   "type": "array",
                   "items": {
-                    "type": "object"
+                    "$ref": "#/components/schemas/CartItemResponse"
                   }
                 }
               }
@@ -917,7 +931,7 @@
                 "schema": {
                   "type": "array",
                   "items": {
-                    "type": "object"
+                    "$ref": "#/components/schemas/CartItemResponse"
                   }
                 }
               }
@@ -1675,8 +1689,15 @@
           }
         },
         "responses": {
-          "201": {
-            "description": ""
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShipmentResponse"
+                }
+              }
+            }
           }
         },
         "summary": "POST /shipments — 송장 등록 (APPROVED 판매자)",
@@ -1698,11 +1719,11 @@
         ],
         "responses": {
           "200": {
-            "description": "",
+            "description": "송장 미존재 시 null",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object"
+                  "$ref": "#/components/schemas/ShipmentResponse"
                 }
               }
             }
@@ -1739,7 +1760,14 @@
         },
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShipmentResponse"
+                }
+              }
+            }
           }
         },
         "summary": "PATCH /shipments/:id/status — 배송 상태 업데이트 (판매자)",
@@ -1763,7 +1791,17 @@
         ],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ShipmentTrackingResponse"
+                  }
+                }
+              }
+            }
           }
         },
         "summary": "GET /shipments/:id/tracking — 배송 추적 조회 (구매자 본인 또는 판매자)",
@@ -2591,6 +2629,239 @@
           "shippingAddress"
         ]
       },
+      "OrderAddressSnapshotResponse": {
+        "type": "object",
+        "properties": {
+          "recipientName": {
+            "type": "string"
+          },
+          "phone": {
+            "type": "string"
+          },
+          "zipCode": {
+            "type": "string"
+          },
+          "address1": {
+            "type": "string"
+          },
+          "address2": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "recipientName",
+          "phone",
+          "zipCode",
+          "address1"
+        ]
+      },
+      "OrderResponse": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "userId": {
+            "type": "string",
+            "description": "cross-schema plain String — users.users.id (P-001)"
+          },
+          "status": {
+            "enum": [
+              "pending",
+              "confirmed",
+              "preparing",
+              "shipped",
+              "delivered",
+              "completed",
+              "cancelled"
+            ],
+            "type": "string"
+          },
+          "totalAmount": {
+            "type": "string",
+            "example": "30000.00",
+            "description": "금전 — 총 주문 금액 (P-005)"
+          },
+          "discountAmount": {
+            "type": "string",
+            "example": "0",
+            "description": "금전 — 할인 금액 (P-005)"
+          },
+          "shippingAddressSnapshot": {
+            "description": "주문 시점 배송지 스냅샷 (FR-016)",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/OrderAddressSnapshotResponse"
+              }
+            ]
+          },
+          "deliveredAt": {
+            "type": "string",
+            "nullable": true,
+            "format": "date-time"
+          },
+          "completedAt": {
+            "type": "string",
+            "nullable": true,
+            "format": "date-time"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "userId",
+          "status",
+          "totalAmount",
+          "discountAmount",
+          "shippingAddressSnapshot",
+          "createdAt"
+        ]
+      },
+      "OrderListResponse": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OrderResponse"
+            }
+          },
+          "nextCursor": {
+            "type": "string",
+            "nullable": true,
+            "description": "다음 페이지 cursor (없으면 null)"
+          }
+        },
+        "required": [
+          "items"
+        ]
+      },
+      "OrderItemResponse": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "orderId": {
+            "type": "string"
+          },
+          "variantId": {
+            "type": "string"
+          },
+          "productId": {
+            "type": "string"
+          },
+          "sellerId": {
+            "type": "string",
+            "description": "cross-schema plain String — users.sellers.id (P-001)"
+          },
+          "quantity": {
+            "type": "number"
+          },
+          "unitPrice": {
+            "type": "string",
+            "example": "30000.00",
+            "description": "금전 — 주문 시점 단가 스냅샷 (P-005)"
+          },
+          "optionName": {
+            "type": "string"
+          },
+          "optionValue": {
+            "type": "string"
+          },
+          "productTitle": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "orderId",
+          "variantId",
+          "productId",
+          "sellerId",
+          "quantity",
+          "unitPrice",
+          "optionName",
+          "optionValue",
+          "productTitle"
+        ]
+      },
+      "OrderDetailResponse": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "userId": {
+            "type": "string",
+            "description": "cross-schema plain String — users.users.id (P-001)"
+          },
+          "status": {
+            "enum": [
+              "pending",
+              "confirmed",
+              "preparing",
+              "shipped",
+              "delivered",
+              "completed",
+              "cancelled"
+            ],
+            "type": "string"
+          },
+          "totalAmount": {
+            "type": "string",
+            "example": "30000.00",
+            "description": "금전 — 총 주문 금액 (P-005)"
+          },
+          "discountAmount": {
+            "type": "string",
+            "example": "0",
+            "description": "금전 — 할인 금액 (P-005)"
+          },
+          "shippingAddressSnapshot": {
+            "description": "주문 시점 배송지 스냅샷 (FR-016)",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/OrderAddressSnapshotResponse"
+              }
+            ]
+          },
+          "deliveredAt": {
+            "type": "string",
+            "nullable": true,
+            "format": "date-time"
+          },
+          "completedAt": {
+            "type": "string",
+            "nullable": true,
+            "format": "date-time"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OrderItemResponse"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "userId",
+          "status",
+          "totalAmount",
+          "discountAmount",
+          "shippingAddressSnapshot",
+          "createdAt",
+          "items"
+        ]
+      },
       "RegisterSellerDto": {
         "type": "object",
         "properties": {
@@ -2975,6 +3246,66 @@
           "quantity"
         ]
       },
+      "CartItemResponse": {
+        "type": "object",
+        "properties": {
+          "variantId": {
+            "type": "string"
+          },
+          "productId": {
+            "type": "string"
+          },
+          "sellerId": {
+            "type": "string",
+            "description": "cross-schema plain String — users.sellers.id (P-001)"
+          },
+          "quantity": {
+            "type": "number"
+          },
+          "unitPrice": {
+            "type": "string",
+            "example": "30000.00",
+            "description": "금전 — 단가 스냅샷 (P-005)"
+          },
+          "optionName": {
+            "type": "string"
+          },
+          "optionValue": {
+            "type": "string"
+          },
+          "productTitle": {
+            "type": "string"
+          },
+          "sku": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "variantId",
+          "productId",
+          "sellerId",
+          "quantity",
+          "unitPrice",
+          "optionName",
+          "optionValue",
+          "productTitle",
+          "sku"
+        ]
+      },
+      "CartResponse": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CartItemResponse"
+            }
+          }
+        },
+        "required": [
+          "items"
+        ]
+      },
       "AddCartItemDto": {
         "type": "object",
         "properties": {
@@ -3208,6 +3539,55 @@
           "trackingNumber"
         ]
       },
+      "ShipmentResponse": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "orderId": {
+            "type": "string",
+            "description": "cross-module plain String — orders.orders.id (P-001)"
+          },
+          "status": {
+            "enum": [
+              "preparing",
+              "shipped",
+              "in_transit",
+              "delivered"
+            ],
+            "type": "string"
+          },
+          "carrier": {
+            "type": "string"
+          },
+          "trackingNumber": {
+            "type": "string"
+          },
+          "shippedAt": {
+            "type": "string",
+            "nullable": true,
+            "format": "date-time"
+          },
+          "deliveredAt": {
+            "type": "string",
+            "nullable": true,
+            "format": "date-time"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "orderId",
+          "status",
+          "carrier",
+          "trackingNumber",
+          "createdAt"
+        ]
+      },
       "UpdateShipmentStatusDto": {
         "type": "object",
         "properties": {
@@ -3228,6 +3608,40 @@
         },
         "required": [
           "status"
+        ]
+      },
+      "ShipmentTrackingResponse": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "shipmentId": {
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "preparing",
+              "shipped",
+              "in_transit",
+              "delivered"
+            ],
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "occurredAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "shipmentId",
+          "status",
+          "description",
+          "occurredAt"
         ]
       },
       "CreateSettlementDto": {
