@@ -15,3 +15,4 @@ export {
   DialogFooter,
 } from './dialog';
 export { buttonVariants } from './button';
+export { Table, THead, TBody, TR, TH, TD } from './table';

@@ -5,6 +5,7 @@ import type {
   Category,
   CreateAddressRequest,
   CreateProductRequest,
+  CreateShipmentRequest,
   CreateVariantRequest,
   CursorPage,
   ListProductsQuery,
@@ -14,12 +15,16 @@ import type {
   ProductVariant,
   RecentView,
   RegisterRequest,
+  SellerOrder,
   SellerProfile,
   SellerRegisterRequest,
   SellerStatusResponse,
+  Shipment,
+  ShipmentTracking,
   StockInRequest,
   UpdateAddressRequest,
   UpdateProfileRequest,
+  UpdateShipmentStatusRequest,
   UserProfile,
   WishlistItem,
 } from '@doa/shared-types';
@@ -128,6 +133,24 @@ export function createApiClient(options: HttpClientOptions) {
       /** 재고 입고 — 본문 없음(void). APPROVED 판매자 전용. */
       stockIn: (variantId: string, body: StockInRequest) =>
         http.post<void>(`/inventory/${variantId}/stock-in`, body),
+    },
+
+    order: {
+      /** GET /seller/orders — 판매자 본인 주문 목록(최신순). */
+      listSeller: () => http.get<SellerOrder[]>('/seller/orders'),
+      /** POST /seller/orders/:id/confirm — 주문 확인(confirmed → preparing). */
+      confirm: (orderId: string) =>
+        http.post<void>(`/seller/orders/${orderId}/confirm`),
+    },
+
+    shipping: {
+      /** POST /shipments — 송장 등록(preparing → shipped). 생성된 Shipment 반환. */
+      create: (body: CreateShipmentRequest) => http.post<Shipment>('/shipments', body),
+      /** PATCH /shipments/:id/status — 배송 상태 업데이트(delivered 시 주문도 delivered). */
+      updateStatus: (id: string, body: UpdateShipmentStatusRequest) =>
+        http.patch<Shipment>(`/shipments/${id}/status`, body),
+      /** GET /shipments/:id/tracking — 추적 이력(권한 3축: 구매자/판매자). */
+      tracking: (id: string) => http.get<ShipmentTracking[]>(`/shipments/${id}/tracking`),
     },
   };
 }

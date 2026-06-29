@@ -17,6 +17,7 @@ const NAV: NavItem[] = [
   { href: '/account/addresses', label: '배송지', section: 'common' },
   { href: '/account/wishlist', label: '위시리스트', section: 'common' },
   { href: '/seller/products', label: '내 상품', section: 'seller' },
+  { href: '/seller/orders', label: '주문·배송', section: 'seller' },
   { href: '/admin/sellers', label: '판매자 승인', section: 'admin' },
 ];
 
@@ -31,7 +32,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
 
   if (loading || !isAuthenticated) {
     return (
-      <div className="flex min-h-screen items-center justify-center text-sm text-zinc-500">
+      <div className="flex min-h-screen items-center justify-center text-sm text-muted-foreground">
         불러오는 중…
       </div>
     );
@@ -42,8 +43,8 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
 
   return (
     <div className="flex min-h-screen">
-      <aside className="w-60 shrink-0 border-r border-zinc-200 bg-white px-4 py-6">
-        <div className="px-2 text-lg font-semibold text-zinc-900">DOA Console</div>
+      <aside className="w-60 shrink-0 border-r border-border bg-surface px-4 py-6">
+        <div className="px-2 text-lg font-semibold text-foreground">DOA Console</div>
         <nav className="mt-8 flex flex-col gap-1">
           {visible.map((item) => {
             const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
@@ -51,10 +52,10 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
               <Link
                 key={item.href}
                 href={item.href}
-                className={`rounded-lg px-3 py-2 text-sm transition ${
+                className={`rounded-control px-3 py-2 text-sm transition ${
                   active
-                    ? 'bg-zinc-900 text-white'
-                    : 'text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900'
+                    ? 'bg-accent text-on-accent'
+                    : 'text-muted-foreground hover:bg-muted hover:text-foreground'
                 }`}
               >
                 {item.label}
@@ -65,18 +66,18 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
       </aside>
 
       <div className="flex flex-1 flex-col">
-        <header className="flex h-14 items-center justify-between border-b border-zinc-200 bg-white px-6">
-          <div className="text-sm text-zinc-500">
+        <header className="flex h-14 items-center justify-between border-b border-border bg-surface px-6">
+          <div className="text-sm text-muted-foreground">
             {profile?.email}
             {isSeller && (
-              <span className="ml-2 rounded-full bg-zinc-100 px-2 py-0.5 text-xs text-zinc-600">
+              <span className="ml-2 rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">
                 판매자 · {sellerStatus}
               </span>
             )}
           </div>
           <button
             onClick={() => void logout().then(() => router.replace('/login'))}
-            className="text-sm text-zinc-500 transition hover:text-zinc-900"
+            className="text-sm text-muted-foreground transition hover:text-foreground"
           >
             로그아웃
           </button>

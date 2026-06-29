@@ -246,3 +246,64 @@ export interface AddImageRequest {
 export interface StockInRequest {
   quantity: number;
 }
+
+// ---------------------------------------------------------------------------
+// order / shipping (Phase 1 — 판매자 주문·배송)
+// 백엔드 응답이 OpenAPI 에 미정의(Prisma 엔티티 반환)이므로 전이형 view 타입으로 한시 정의한다.
+// 금전 필드는 Decimal → JSON 직렬화 시 문자열.
+// ---------------------------------------------------------------------------
+
+export type OrderStatus =
+  | 'pending'
+  | 'confirmed'
+  | 'preparing'
+  | 'shipped'
+  | 'delivered'
+  | 'completed'
+  | 'cancelled';
+
+/** GET /seller/orders — 판매자 주문 1건(items 미포함). */
+export interface SellerOrder {
+  id: string;
+  userId: string;
+  status: OrderStatus;
+  totalAmount: string;
+  discountAmount: string;
+  deliveredAt: string | null;
+  completedAt: string | null;
+  createdAt: string;
+}
+
+export type ShipmentStatus = 'preparing' | 'shipped' | 'in_transit' | 'delivered';
+
+export interface Shipment {
+  id: string;
+  orderId: string;
+  status: ShipmentStatus;
+  carrier: string;
+  trackingNumber: string;
+  shippedAt: string | null;
+  deliveredAt: string | null;
+  createdAt: string;
+}
+
+export interface ShipmentTracking {
+  id: string;
+  shipmentId: string;
+  status: ShipmentStatus;
+  description: string;
+  occurredAt: string;
+}
+
+/** POST /shipments — CreateShipmentDto. */
+export interface CreateShipmentRequest {
+  orderId: string;
+  carrier: string;
+  trackingNumber: string;
+}
+
+/** PATCH /shipments/:id/status — UpdateShipmentStatusDto. */
+export interface UpdateShipmentStatusRequest {
+  status: ShipmentStatus;
+  description?: string;
+}
