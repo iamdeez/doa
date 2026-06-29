@@ -5,6 +5,7 @@
   "main": "src/index.ts",
   "types": "src/index.ts",
   "dependencies": {
-    "@doa/shared-types": "workspace:*"
+    "@doa/shared-types": "workspace:*",
+    "openapi-fetch": "^0.17.0"
   }
 }

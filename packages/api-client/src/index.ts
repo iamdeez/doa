@@ -23,20 +23,36 @@ import type {
   UserProfile,
   WishlistItem,
 } from '@doa/shared-types';
+import createOpenApiClient from 'openapi-fetch';
+import type { paths } from '@doa/shared-types';
 import { HttpClient, type HttpClientOptions } from './http';
+import { createAuthFetch } from './auth-fetch';
 
 export { ApiError, HttpClient } from './http';
+export { createAuthFetch } from './auth-fetch';
 export type { HttpClientOptions, TokenStore } from './http';
+export type { AuthFetchOptions } from './auth-fetch';
+
+/** OpenAPI(생성 타입) 기반 완전 타입드 클라이언트 — 전 도메인 70개 경로. */
+export type TypedClient = ReturnType<typeof createOpenApiClient<paths>>;
 
 /**
  * 도메인별로 그룹화된 타입드 API 클라이언트.
  * 엔드포인트 경로는 apps/backend 컨트롤러(글로벌 프리픽스 없음) 기준.
  */
 export function createApiClient(options: HttpClientOptions) {
-  const http = new HttpClient(options);
+  // 공유 authFetch — legacy facade 와 타입드 client 가 동일 refresh(in-flight 1회) 공유.
+  const authFetch = createAuthFetch(options);
+  const http = new HttpClient(options, authFetch);
+  /**
+   * 전 도메인 타입드 클라이언트 (openapi-fetch). 신규 화면은 이것을 사용한다.
+   * 예: `api.client.GET('/seller/orders', { params: { query: { ... } } })` — 경로·쿼리·본문·응답 전부 타입.
+   */
+  const client = createOpenApiClient<paths>({ baseUrl: options.baseUrl, fetch: authFetch });
 
   return {
     http,
+    client,
 
     auth: {
       login: (body: LoginRequest) =>
