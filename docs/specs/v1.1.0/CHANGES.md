@@ -1,3 +1,46 @@
+## [009-flutter-customer-app] 구현 완료
+
+> v1.1.0 의 아홉 번째 차수 — **Flutter 고객 앱 MVP 신규 구현**: `mobile/customer_app` 모듈 전체 신규 생성.
+> base `a94ff47` → `a3fc463`. 변경 라인은 `git diff a94ff47 a3fc463 -- mobile/customer_app` 로 재생성
+> (28 files, 전체 신규). **마이그레이션 없음**(DB 스키마 변경 0). 신규 의존성: Flutter ^3.9.2 + Riverpod + Dio 등 (백엔드·콘솔 독립).
+> 선택 단계 전부 N.
+
+**변경 파일**:
+- `mobile/customer_app/lib/app.dart`: DoaApp — AuthStatus switch 라우팅
+- `mobile/customer_app/lib/main.dart`: 진입점, ko_KR 초기화
+- `mobile/customer_app/lib/core/api_client.dart`: Dio + InterceptorsWrapper (Bearer·401 refresh)
+- `mobile/customer_app/lib/core/providers.dart`: Riverpod providers, AuthController
+- `mobile/customer_app/lib/core/token_store.dart`: FlutterSecureStorage 래퍼
+- `mobile/customer_app/lib/theme/app_theme.dart`: DoaColors, DoaRadius, AppTheme.light()
+- `mobile/customer_app/lib/features/shell/app_shell.dart`: 4탭 IndexedStack
+- `mobile/customer_app/lib/features/shell/category_screen.dart`: 카테고리 화면 (하드코딩)
+- `mobile/customer_app/lib/features/auth/login_screen.dart`: 로그인 화면
+- `mobile/customer_app/lib/features/home/home_screen.dart`: 홈 상품 그리드
+- `mobile/customer_app/lib/features/product/product_detail_screen.dart`: 상품 상세, 찜, 리뷰
+- `mobile/customer_app/lib/features/product/variant_sheet.dart`: 옵션 선택 시트
+- `mobile/customer_app/lib/features/cart/cart_screen.dart`: 장바구니
+- `mobile/customer_app/lib/features/checkout/checkout_screen.dart`: 결제 화면 (uuid idempotencyKey)
+- `mobile/customer_app/lib/features/order/order_history_screen.dart`: 주문 내역
+- `mobile/customer_app/lib/features/order/order_detail_screen.dart`: 주문 상세
+- `mobile/customer_app/lib/features/order/delivery_tracking_screen.dart`: 배송 추적 스테퍼
+- `mobile/customer_app/lib/features/order/order_status.dart`: 주문 상태 레이블·색상
+- `mobile/customer_app/lib/features/review/review_write_screen.dart`: 리뷰 작성
+- `mobile/customer_app/lib/features/wishlist/wishlist_screen.dart`: 찜 목록
+- `mobile/customer_app/lib/features/history/history_screen.dart`: 최근 본 상품
+- `mobile/customer_app/lib/features/coupon/coupon_box_screen.dart`: 쿠폰함
+- `mobile/customer_app/lib/features/address/address_book_screen.dart`: 배송 주소록
+- `mobile/customer_app/lib/features/address/address_edit_screen.dart`: 배송지 추가·수정
+- `mobile/customer_app/lib/features/mypage/mypage_screen.dart`: 마이페이지
+- `mobile/customer_app/lib/features/search/search_screen.dart`: 검색 화면
+- `mobile/customer_app/pubspec.yaml`: Flutter 의존성 선언
+- `mobile/customer_app/test/app_theme_test.dart`: AppTheme 위젯 테스트
+
+**후속 작업 시 주의사항**:
+- 전체 응답 파싱이 `Map<String,dynamic>` 동적 파싱이므로, 필드명·타입 변경 시 런타임 오류 발생. Freezed 모델 도입 전까지 백엔드 응답 스키마 변경에 주의 (GAP-009-01).
+- 찜 목록·최근 본 상품은 N+1 조회 패턴. 아이템 수 증가 시 서버 요청 급증 가능 (GAP-009-02).
+- `pubspec.yaml`에 `go_router`가 선언되어 있으나 실제 라우팅은 `Navigator.push`/`MaterialPageRoute` 사용. 향후 라우팅 통합 시 go_router 적용 또는 제거 결정 필요.
+- `mobile/customer_app`은 백엔드·콘솔과 독립 빌드 단위. `pnpm` 워크스페이스 외부에 위치하며 `flutter pub get`으로 별도 의존성 관리.
+
 ## [008-console-admin-polish] 구현 완료
 
 > v1.1.0 의 여덟 번째 차수 — **007(관리자 콘솔) 이후 폴리시 작업**: 관리자 쿠폰 화면(007 범위 외 예고)·
