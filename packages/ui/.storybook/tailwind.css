@@ -1,0 +1,10 @@
+@import 'tailwindcss';
+@import '../../design-tokens/build/web/tokens.css';
+@import '../../design-tokens/css/theme.css';
+@source '../src';
+
+body {
+  background: var(--bg-canvas);
+  color: var(--fg-default);
+  font-family: Pretendard, ui-sans-serif, system-ui, sans-serif;
+}

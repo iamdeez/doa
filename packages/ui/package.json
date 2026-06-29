@@ -4,11 +4,22 @@
   "private": true,
   "main": "src/index.ts",
   "types": "src/index.ts",
+  "scripts": {
+    "storybook": "storybook dev -p 6006",
+    "build-storybook": "storybook build"
+  },
   "peerDependencies": {
     "react": ">=19"
   },
   "devDependencies": {
-    "@types/react": "^19.0.0"
+    "@storybook/addon-docs": "^10.4.6",
+    "@storybook/react-vite": "^10.4.6",
+    "@tailwindcss/vite": "^4.3.2",
+    "@types/react": "^19.0.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "storybook": "^10.4.6",
+    "vite": "^8.1.0"
   },
   "dependencies": {
     "@radix-ui/react-dialog": "^1.1.17",
