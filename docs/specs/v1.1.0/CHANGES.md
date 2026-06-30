@@ -1,3 +1,95 @@
+## [011-backend-cors-dev-logging] 구현 완료
+
+> v1.1.0 의 열한 번째 차수 — **백엔드 부트스트랩 보강**: (1) CORS 활성화로 콘솔·모바일 등 교차 출처
+> 클라이언트의 API 호출 허용, (2) `app.module.ts` 가 비프로덕션에서 참조하던 `pino-pretty` transport
+> 의존성 누락(잠재 부팅 결함) 해소, (3) GAP-011-01 해소(`CORS_ORIGIN` 환경변수 문서화). base `1fe3489`
+> → working tree(작성 시점 미커밋). 변경 라인은
+> `git diff 1fe3489 -- apps/backend/src/main.ts apps/backend/.env.example apps/backend/package.json pnpm-lock.yaml`
+> 로 재생성 (소스 4 files, +93 / 인프라 메타 `infra.md` +2 별도). **마이그레이션 없음**(DB 스키마 변경 0).
+> 신규 의존성: `pino-pretty ^13.1.3`(devDep). 선택 단계 전부 N. **역문서화(retroactive)**.
+
+**변경 파일**:
+- `apps/backend/src/main.ts` (+7): 부트스트랩에 `app.enableCors({ origin: CORS_ORIGIN?.split(',') ?? true, credentials: true })` 추가
+- `apps/backend/.env.example` (+3): `CORS_ORIGIN` 항목 + fail-open 주의 주석 추가 (GAP-011-01 해소)
+- `apps/backend/package.json` (+1): `devDependencies` 에 `pino-pretty ^13.1.3` 추가
+- `pnpm-lock.yaml` (+82): `pino-pretty@13.1.3` + 전이 의존성 트리 lock
+- `.claude/docs/infra.md` (+2): §7 배포 체크리스트에 `CORS_ORIGIN` 항목, §8 알려진 제약에 CORS fail-open 행 추가 (GAP-011-01 해소, 인프라 참조 문서 — 별도 추적)
+
+**검증**:
+- `pnpm --filter backend test` → **261 passed / 261 total** (회귀 0, 미커밋 변경 포함 상태로 실행).
+- `main.ts` `enableCors` + `?? true` fallback 확인 (SC-001, SC-002).
+- `package.json` devDeps `pino-pretty` + `pnpm-lock` `pino-pretty@13.1.3` 확인 (SC-003, SC-004).
+- `.env.example` 에 `CORS_ORIGIN` 추가 확인 (GAP-011-01 해소).
+
+**해소된 GAP**:
+- **GAP-011-01 (해소)**: CORS 환경변수 문서화 공백 해소 — `.env.example` 에 `CORS_ORIGIN` 추가 및
+  `infra.md` §7(배포 체크리스트)·§8(알려진 제약: CORS fail-open) 보강. 운영 배포 시 `CORS_ORIGIN`
+  화이트리스트 설정이 체크리스트로 강제된다.
+
+**후속 작업 시 주의사항**:
+- **CORS 전체 허용 기본값 — 운영 화이트리스트 필수**: `CORS_ORIGIN` 미설정 시 모든 origin 허용 +
+  `credentials: true` 조합은 운영에서 보안 위험이다. 코드 기본값은 fail-open 이므로, 운영 배포 시 반드시
+  `CORS_ORIGIN` 환경변수로 허용 origin 을 명시해야 한다(infra.md §7 체크리스트로 강제, §8 제약 등재).
+- **pino-pretty 는 dev 전용**: 비프로덕션 transport 로만 동작하므로 `devDependencies` 가 적절. 프로덕션
+  (`NODE_ENV=production`)에서는 `transport: undefined` 로 raw JSON stdout 로깅 — 동작 변경 없음. 프로덕션
+  이미지 빌드 시 dev 의존성 제외 가능.
+- **010 FR-005 와의 관계**: 010 이 `openapi:gen` 에 `NODE_ENV=production` 을 강제해 pino-pretty 누락을
+  *회피*한 것과 동일 뿌리 문제를, 본 차수가 의존성 추가로 *근본 해소*했다. 이제 `openapi:gen` 외 다른
+  비프로덕션 부팅 경로에서도 transport 로드가 안전하다.
+
+## [010-backend-response-schemas] 구현 완료
+
+> v1.1.0 의 열 번째 차수 — **백엔드 OpenAPI 2xx 응답 스키마 보강**(GAP-001-01 후속): 14개 도메인에
+> 문서 전용 응답 DTO(`*-response.dto.ts`)를 신규 도입하고 각 컨트롤러 라우트에 `@ApiOkResponse({ type })`
+> 부착. **런타임 무변경**(NFR-001) — 컨트롤러는 여전히 Prisma 엔티티를 반환하며 DTO 는 스키마 생성 전용.
+> base `a3fc463` → `1fe3489`(커밋 6개, 중간에 009 docs 커밋 `db7cdb5` 끼어 있음). 변경 라인은
+> `git diff a3fc463 1fe3489 -- apps/backend/src apps/backend/openapi.json apps/backend/package.json packages/shared-types/src/openapi.gen.ts`
+> 로 재생성. **마이그레이션 없음**(DB 스키마 변경 0). **신규 의존성 0**. 선택 단계 전부 N.
+> **역문서화(retroactive)** — 이미 커밋된 코드 기준으로 SDD 문서 세트를 역공학 작성.
+
+**변경 파일** (응답 DTO 14종 신규 + 컨트롤러 15종 어노테이션 + 생성물 2종):
+- `apps/backend/src/modules/admin/dto/admin-response.dto.ts` (+51) · `admin.controller.ts` (+7)
+- `apps/backend/src/modules/auth/dto/auth-response.dto.ts` (+34) · `auth.controller.ts` (+11)
+- `apps/backend/src/modules/banner/dto/banner-response.dto.ts` (+35) · `banner.controller.ts` (+6)
+- `apps/backend/src/modules/cart/dto/cart-response.dto.ts` (+40) · `cart.controller.ts` (+5)
+- `apps/backend/src/modules/coupon/dto/coupon-response.dto.ts` (+75) · `coupon.controller.ts` (+13)
+- `apps/backend/src/modules/notification/dto/notification-response.dto.ts` (+47) · `notification.controller.ts` (+9)
+- `apps/backend/src/modules/order/dto/order-response.dto.ts` (+101) · `order.controller.ts` (+4)
+- `apps/backend/src/modules/product/dto/product-response.dto.ts` (+125) · `product.controller.ts` (+9)
+- `apps/backend/src/modules/review/dto/review-response.dto.ts` (+46) · `review.controller.ts` (+6)
+- `apps/backend/src/modules/seller/dto/seller-response.dto.ts` (+35)
+- `apps/backend/src/modules/settlement/dto/settlement-response.dto.ts` (+35) · `settlement.controller.ts` (+4)
+- `apps/backend/src/modules/shipping/dto/shipping-response.dto.ts` (+49) · `shipping.controller.ts` (+6)
+- `apps/backend/src/modules/stats/dto/stats-response.dto.ts` (+29) · `stats.controller.ts` (+4)
+- `apps/backend/src/modules/user/dto/user-response.dto.ts` (+79) · `user.controller.ts` (+15)
+- `apps/backend/src/modules/search/search.controller.ts` (+3): 상품 검색 라우트 어노테이션
+- `apps/backend/package.json` (+1/-1): `openapi:gen` 스크립트에 `NODE_ENV=production` 추가 (pino-pretty silent exit 버그 픽스, FR-005)
+- `apps/backend/openapi.json` (+1773/-161): 생성물 — components.schemas 32→73, typed 2xx 38→62
+- `packages/shared-types/src/openapi.gen.ts` (+562/-61): 생성물 — openapi-typescript 코드젠 재실행
+
+**검증**:
+- `pnpm --filter backend test` → **261 passed / 261 total**, 25 suites 전량 PASS (SC-008, 회귀 0).
+- `openapi.json` `components.schemas` 32→**73** (SC-005, 직접 카운트 검증).
+- typed 2xx 응답 오퍼레이션 38→**62** / 전체 89 (SC-006, 직접 카운트 검증).
+- 14개 도메인 `*-response.dto.ts` 신규 생성 확인 (SC-001).
+- `openapi:gen` 스크립트 `NODE_ENV=production` 포함 확인 (SC-004).
+
+**후속 작업 시 주의사항**:
+- **DTO 는 문서 전용 — 런타임 변환 없음**: 컨트롤러는 Prisma 엔티티를 그대로 반환하므로 DTO 필드와 실제
+  반환 페이로드가 drift 할 수 있다. class-transformer 직렬화 변환은 범위 외(별도 스펙). DTO 필드를 추가·변경할 때
+  실제 엔티티 반환 형태와 수동 대조가 필요하다.
+- **금전 필드 string 표기(P-005) 일관성**: Prisma `Decimal` 은 JSON 직렬화 시 문자열이 되므로 DTO 에서
+  `@ApiProperty({ type: String })` 로 선언했다. 신규 금전 필드 추가 시 동일 원칙을 유지해야 프론트 타입이 맞다.
+- **cross-schema plain String(P-001)**: userId·sellerId 등 외래 모듈 ID 는 모듈 의존 회피를 위해 plain String
+  으로만 노출한다. 찜·최근 본 상품(`/user/wishlist`·`/user/recent-views`)도 `productId: string` 만 반환하며 상품
+  summary join 을 하지 않는다(SC-009). 응답에 상품 상세가 필요하면 별도 BFF/조합 계층에서 처리한다.
+- **계약 재생성 절차(2단계) 유지**: 백엔드 DTO 변경 시 `pnpm --filter backend openapi:gen` →
+  `pnpm --filter @doa/shared-types gen` 양 단계를 재실행해야 `openapi.json`·`openapi.gen.ts` drift 가 없다.
+  CI 자동 재생성·diff 게이트는 아직 없음(GAP-001-01 잔존).
+- **SettlementWithItems items 미모델링(GAP-010-01)**: `createSettlement` 응답의 `items` 배열은 DTO 로 완전
+  표현하지 않았다(범위 외 이월). 정산 상세 응답을 프론트에서 강타입으로 다루려면 후속 스펙에서 보강 필요.
+- **204 응답 미보강**: 로그아웃·삭제 등 204 No Content 는 스키마 대상이 아니다(범위 외). 본문이 있는 응답만 보강했다.
+
 ## [009-flutter-customer-app] 구현 완료
 
 > v1.1.0 의 아홉 번째 차수 — **Flutter 고객 앱 MVP 신규 구현**: `mobile/customer_app` 모듈 전체 신규 생성.
