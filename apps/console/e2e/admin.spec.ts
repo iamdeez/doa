@@ -42,8 +42,8 @@ test.describe('SC-023: 관리자 /admin/* 접근 (FR-007, FR-006)', () => {
     // /admin/banners 접근
     await page.goto('/admin/banners');
     await expect(page).toHaveURL(/\/admin\/banners/);
-    // 배너 관리 콘텐츠 확인
-    await expect(page.getByText(/배너/i)).toBeVisible({ timeout: 5_000 });
+    // 배너 관리 콘텐츠 확인 (페이지 heading — nav 링크 등 중복 매칭 방지)
+    await expect(page.getByRole('heading', { name: /배너/ })).toBeVisible({ timeout: 5_000 });
   });
 
   test('when_admin_logged_in_then_admin_nav_items_visible', async ({ page }: { page: Page }) => {

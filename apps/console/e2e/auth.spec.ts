@@ -64,8 +64,8 @@ test.describe('SC-021: 로그인 성공 후 대시보드 진입 (FR-007)', () =>
 
     // 대시보드 진입 확인
     await expect(page).toHaveURL(/\/dashboard/);
-    // 대시보드 콘텐츠 확인 (네비게이션 항목)
-    await expect(page.getByText('대시보드')).toBeVisible();
+    // 대시보드 콘텐츠 확인 (페이지 heading — nav 링크와 중복 매칭 방지)
+    await expect(page.getByRole('heading', { name: '대시보드' })).toBeVisible();
   });
 
   test('when_invalid_credentials_then_error_shown', async ({ page }: { page: Page }) => {
@@ -75,8 +75,10 @@ test.describe('SC-021: 로그인 성공 후 대시보드 진입 (FR-007)', () =>
     await page.getByLabel(/비밀번호/i).fill('wrong-password');
     await page.getByRole('button', { name: /로그인/i }).click();
 
-    // 오류 메시지 표시 확인
-    await expect(page.getByText(/로그인|인증|오류|실패/i)).toBeVisible({ timeout: 5_000 });
+    // 오류 메시지 표시 확인 (401 → 로그인 페이지의 ErrorText 문구를 특정)
+    await expect(
+      page.getByText('이메일 또는 비밀번호가 올바르지 않습니다.'),
+    ).toBeVisible({ timeout: 5_000 });
     // 로그인 페이지에 유지
     await expect(page).toHaveURL(/\/login/);
   });

@@ -74,14 +74,17 @@ test.describe('SC-016: 비관리자 /admin/* 접근 → /login 리다이렉트 (
 
     // 로그인 후 /admin/banners 직접 접근 (쿠키는 auth=1, admin=false)
     await page.goto('/admin/banners', { waitUntil: 'networkidle' });
-    // /login으로 리다이렉트 확인
-    await expect(page).toHaveURL(/\/login/);
+    // 비관리자는 /admin 에서 차단된다. middleware 가 /login 으로 보내고,
+    // 로그인 페이지가 인증된 사용자를 /dashboard 로 bounce(login/page.tsx)하므로
+    // 최종 URL 은 /login 또는 /dashboard 다 — 핵심은 /admin 에 진입하지 못함.
+    await expect(page).not.toHaveURL(/\/admin/);
   });
 
   test('when_seller_user_accesses_admin_then_redirected_to_login', async ({ page }: { page: Page }) => {
     await loginAs(page, USERS.seller);
     await page.goto('/admin/banners', { waitUntil: 'networkidle' });
-    await expect(page).toHaveURL(/\/login/);
+    // 비관리자(판매자)도 /admin 진입 차단 (위 일반 사용자와 동일 경로)
+    await expect(page).not.toHaveURL(/\/admin/);
   });
 });
 

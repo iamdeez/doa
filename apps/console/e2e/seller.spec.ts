@@ -42,8 +42,10 @@ test.describe('SC-022: 승인된 판매자 /seller/* 접근 (FR-007)', () => {
     // /seller/products 접근
     await page.goto('/seller/products');
     await expect(page).toHaveURL(/\/seller\/products/);
-    // 판매자 콘텐츠 확인
-    await expect(page.getByText(/내 상품|상품 목록|상품 관리/i)).toBeVisible({ timeout: 5_000 });
+    // 판매자 콘텐츠 확인 (페이지 heading — nav 링크와 중복 매칭 방지)
+    await expect(
+      page.getByRole('heading', { name: /내 상품|상품 목록|상품 관리/ }),
+    ).toBeVisible({ timeout: 5_000 });
   });
 
   test('when_seller_logged_in_then_seller_nav_items_visible', async ({ page }: { page: Page }) => {
