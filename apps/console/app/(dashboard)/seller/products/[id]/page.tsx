@@ -1,6 +1,6 @@
 'use client';
 
-import type { CreateVariantRequest, Product, ProductVariant } from '@doa/shared-types';
+import type { AddImageRequest, CreateVariantRequest, Product, ProductImage, ProductVariant } from '@doa/shared-types';
 import { ApiError } from '@doa/api-client';
 import { Button, Card, ErrorText, Input, Loading } from '@doa/ui';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -9,6 +9,8 @@ import { useParams } from 'next/navigation';
 import { useState, type FormEvent } from 'react';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
+import { ImageUpload } from '@/components/image-upload';
+import { EmptyState } from '@/components/states';
 
 export default function ProductManagePage() {
   const params = useParams<{ id: string }>();
@@ -65,6 +67,11 @@ export default function ProductManagePage() {
             onDeactivate={() => deactivate.mutate()}
             deactivating={deactivate.isPending}
           />
+          <ProductImageSection
+            productId={productId}
+            images={detail.data.images ?? []}
+            onChange={refetchAll}
+          />
           <VariantSection
             productId={productId}
             variants={detail.data.variants ?? []}
@@ -73,6 +80,83 @@ export default function ProductManagePage() {
           />
         </>
       )}
+    </div>
+  );
+}
+
+const MAX_IMAGES = 10;
+
+function ProductImageSection({
+  productId,
+  images,
+  onChange,
+}: {
+  productId: string;
+  images: ProductImage[];
+  onChange: () => void;
+}) {
+  const addImage = useMutation({
+    mutationFn: (body: AddImageRequest) => api.catalog.addImage(productId, body),
+    onSuccess: onChange,
+  });
+  const deleteImage = useMutation({
+    mutationFn: (imageId: string) => api.catalog.deleteImage(productId, imageId),
+    onSuccess: onChange,
+  });
+
+  return (
+    <div className="space-y-4">
+      <h2 className="text-lg font-semibold text-foreground">이미지</h2>
+
+      {images.length === 0 ? (
+        <EmptyState title="등록된 이미지가 없습니다." />
+      ) : (
+        <div className="grid grid-cols-3 gap-3 sm:grid-cols-5">
+          {images.map((img) => (
+            <div key={img.id} className="group relative">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={img.url}
+                alt={`상품 이미지 ${img.displayOrder + 1}`}
+                className="aspect-square w-full rounded-lg border border-border object-cover"
+              />
+              <button
+                type="button"
+                onClick={() => deleteImage.mutate(img.id)}
+                disabled={deleteImage.isPending}
+                className="absolute right-1 top-1 hidden rounded-full bg-danger px-1.5 py-0.5 text-xs text-white group-hover:block disabled:opacity-50"
+              >
+                삭제
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="space-y-2">
+        <ImageUpload
+          purpose="PRODUCT_IMAGE"
+          disabled={images.length >= MAX_IMAGES || addImage.isPending}
+          onUploaded={(url) =>
+            addImage.mutate({ url, displayOrder: images.length })
+          }
+        />
+        {images.length >= MAX_IMAGES && (
+          <p className="text-xs text-muted-foreground">
+            이미지는 최대 {MAX_IMAGES}장까지 등록할 수 있습니다.
+          </p>
+        )}
+        {addImage.isError && (
+          <p className="text-sm text-danger">
+            {addImage.error instanceof ApiError ? addImage.error.message : '이미지 추가 실패'}
+          </p>
+        )}
+        {deleteImage.isError && (
+          <p className="text-sm text-danger">
+            {deleteImage.error instanceof ApiError ? deleteImage.error.message : '이미지 삭제 실패'}
+          </p>
+        )}
+      </div>
     </div>
   );
 }

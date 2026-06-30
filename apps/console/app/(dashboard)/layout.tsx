@@ -35,7 +35,7 @@ const NAV: NavItem[] = [
 export default function DashboardLayout({ children }: { children: ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
-  const { loading, isAuthenticated, isSeller, sellerStatus, profile, logout } = useAuth();
+  const { loading, isAuthenticated, isSeller, isAdmin, sellerStatus, profile, logout } = useAuth();
 
   useEffect(() => {
     if (!loading && !isAuthenticated) router.replace('/login');
@@ -49,8 +49,11 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
     );
   }
 
-  // admin 섹션은 백엔드 AdminGuard 가 최종 강제하므로 UI 에서는 항상 노출(문서화된 갭).
-  const visible = NAV.filter((n) => n.section !== 'seller' || isSeller);
+  // admin 섹션: middleware(UX 계층) + 이 필터로 비관리자에게 항목 숨김.
+  // 실제 인가 강제는 백엔드 AdminGuard 가 담당(L2).
+  const visible = NAV.filter(
+    (n) => (n.section !== 'seller' || isSeller) && (n.section !== 'admin' || isAdmin),
+  );
 
   return (
     <div className="flex min-h-screen">

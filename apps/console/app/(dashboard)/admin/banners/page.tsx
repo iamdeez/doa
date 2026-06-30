@@ -11,7 +11,6 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-  EmptyState,
   ErrorText,
   Input,
   Loading,
@@ -27,6 +26,8 @@ import {
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { api } from '@/lib/api';
+import { ImageUpload } from '@/components/image-upload';
+import { EmptyState } from '@/components/states';
 
 const POSITIONS: BannerPosition[] = ['MAIN_TOP', 'MAIN_MIDDLE', 'MAIN_BOTTOM', 'SIDEBAR'];
 
@@ -144,7 +145,21 @@ function CreateBannerDialog({ onCreated }: { onCreated: () => void }) {
         </DialogHeader>
         <div className="space-y-3">
           <Input label="제목" value={form.title} onChange={set('title')} required />
-          <Input label="이미지 URL" value={form.imageUrl} onChange={set('imageUrl')} required />
+          <div className="space-y-1.5">
+            <p className="text-sm font-medium text-foreground">이미지</p>
+            <ImageUpload
+              purpose="PRODUCT_IMAGE"
+              onUploaded={(url) => setForm((s) => ({ ...s, imageUrl: url }))}
+            />
+            {form.imageUrl && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={form.imageUrl}
+                alt="배너 미리보기"
+                className="mt-2 h-24 rounded-lg border border-border object-cover"
+              />
+            )}
+          </div>
           <Input label="링크 URL(선택)" value={form.linkUrl} onChange={set('linkUrl')} />
           <Select label="노출 위치" value={form.position} onChange={set('position')}>
             {POSITIONS.map((p) => (

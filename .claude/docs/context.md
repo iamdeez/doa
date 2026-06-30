@@ -14,7 +14,7 @@
 
 - **프로젝트명**: DOA Market (doa-next)
 - **목적**: 기존 AWS 기반 MSA 18개 서비스 오픈마켓을 모듈러 모놀리스 + Fly.io로 재구축. AWS 의존 제거·비용 절감·운영 단순화.
-- **현재 버전**: v1.0.0
+- **현재 버전**: v1.1.0
 - **주요 기술 스택**: Node.js + TypeScript, NestJS, Prisma, PostgreSQL 16, Turborepo
 
 > 001~007 완료. `apps/backend`(NestJS **18모듈 전부 실구현** — auth·user·seller·product·inventory·cart·order·payment·coupon·review·shipping·settlement·search·notification·file·banner·stats·admin),
@@ -100,7 +100,7 @@ Events (발행/구독 — NestJS EventEmitter)
 | 모듈 | 위치 | 역할 |
 |---|---|---|
 | `health` | `src/health/` | 앱 alive 헬스체크 (GET /health, DB 미접근) |
-| `shared/auth` | `src/shared/auth/` | JwtStrategy · JwtAuthGuard · OptionalJwtAuthGuard · AdminGuard(`ADMIN_USER_IDS` env 기반, fail-closed) · `@CurrentUser` 데코레이터 |
+| `shared/auth` | `src/shared/auth/` | JwtStrategy · JwtAuthGuard · OptionalJwtAuthGuard · `isAdminUserId(userId, rawEnv)` 헬퍼(`admin-ids.ts` — ADMIN_USER_IDS 파싱·fail-closed 순수 함수) · AdminGuard(`ADMIN_USER_IDS` env 기반, fail-closed — `isAdminUserId` 위임) · `@CurrentUser` 데코레이터 · `GET /auth/me` 응답에 `isAdmin: boolean` 노출 |
 | `shared/config` | `src/shared/config/` | jwt.config (Access 15분 / Refresh 30일 상수) |
 | `shared/prisma` | `src/shared/prisma/` | PrismaService · PrismaModule (DB 연결) |
 

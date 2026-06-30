@@ -31,4 +31,7 @@ export class AuthProfileResponse {
 
   @ApiProperty({ type: String, format: 'date-time' })
   createdAt!: string;
+
+  @ApiProperty()
+  isAdmin!: boolean;
 }

@@ -1,3 +1,82 @@
+## [012-console-phase4-polish] 구현 완료
+
+> v1.1.0 의 열두 번째 차수 — **콘솔 Phase 4 마감**: (1) 백엔드 `GET /auth/me` 응답에 `isAdmin` 필드 추가(FR-001),
+> (2) `<ImageUpload>` 공용 컴포넌트 + 상품 이미지 관리 + 배너 이미지 업로드(FR-002~004),
+> (3) Next.js `middleware.ts` 라우트 가드 + `auth.tsx` isAdmin 실값 연동 + 네비게이션 권한 필터(FR-005~007),
+> (4) `<ErrorState>·<LoadingState>·<EmptyState>` 표준 컴포넌트(FR-008~009),
+> (5) Playwright E2E 설정 + 스모크 시나리오 4종(FR-010~011).
+> base `f0489a1` → working tree(미커밋). 변경 라인은
+> `git diff f0489a1 -- apps/backend/src apps/console packages/shared-types packages/api-client pnpm-lock.yaml`
+> 로 재생성 (14 files changed, +1462/-52). **마이그레이션 없음**(DB 스키마 변경 0).
+> 신규 의존성: `@playwright/test` (devDep, console). 선택 단계 전부 N.
+
+**변경 파일**:
+
+백엔드:
+- `apps/backend/src/shared/auth/admin-ids.ts` (신규, +17): `isAdminUserId()` 순수 헬퍼 — ADMIN_USER_IDS 파싱·포함 판별(ADR-001). fail-closed.
+- `apps/backend/src/shared/auth/admin-ids.spec.ts` (신규): isAdminUserId 단위 테스트 (env 미설정·빈값·포함·미포함 케이스)
+- `apps/backend/src/shared/auth/admin.guard.ts` (+11/-1): isAdminUserId() 위임으로 파싱 로직 추출. 행위 보존.
+- `apps/backend/src/modules/auth/auth.service.ts` (+5/-1): `getProfile()` 반환에 `isAdmin: isAdminUserId(userId, env)` 추가(FR-001)
+- `apps/backend/src/modules/auth/dto/auth-response.dto.ts` (+3): `AuthProfileResponse`에 `isAdmin: boolean` 필드 추가
+- `apps/backend/src/modules/auth/auth.service.spec.ts` (+84/-0): SC-001·SC-002 신규 테스트 + process.env 격리(beforeEach/afterEach). 기존 SC-010·013·014·016·017 (v1.0.0/001 spec) 출처 주석 추가.
+
+콘솔 공용:
+- `apps/console/lib/upload-constants.ts` (신규, +10): `ALLOWED_MIME_TYPES`·`MAX_FILE_SIZE_BYTES` 상수 (NFR-002)
+- `apps/console/components/states.tsx` (신규): `<LoadingState>·<ErrorState>·<EmptyState>` 표준 컴포넌트 (FR-008)
+- `apps/console/components/image-upload.tsx` (신규): `<ImageUpload>` 공용 컴포넌트 — presign→PUT→confirm 3단계 업로드 (FR-002·ADR-002)
+- `apps/console/lib/auth.tsx` (+18/-1): isAdmin 하드코딩 false → `profile?.isAdmin ?? false` 연동. 쿠키 미러링(`token` 쿠키 set/delete) 추가 (FR-005·ADR-003·ADR-004)
+- `apps/console/lib/config.ts` (+10): `API_BASE_URL` 런타임 설정 노출 (ADR-006)
+- `apps/console/middleware.ts` (신규, +40): 보호 경로 쿠키 기반 가드 — 비인증 `/login` 리다이렉트, 비관리자 `/admin/*` 차단 (FR-006·ADR-003·ADR-005)
+
+콘솔 페이지·레이아웃:
+- `apps/console/app/(dashboard)/layout.tsx` (+9/-0): 네비게이션 admin 섹션에 `isAdmin` 조건 추가 (FR-007. GAP-007-01 (2) 해소)
+- `apps/console/app/(dashboard)/admin/banners/page.tsx` (+19/-0): `imageUrl` 입력 → `<ImageUpload>` 교체 (FR-004)
+- `apps/console/app/(dashboard)/seller/products/[id]/page.tsx` (+86/-0): 이미지 관리 섹션 추가 — 목록·업로드·삭제·10장 제한 (FR-003)
+
+패키지:
+- `packages/shared-types/src/index.ts` (+39/-0): `FilePurpose` union, `UserProfile.isAdmin` 추가, `ImageUploadResult` 신규
+- `packages/api-client/src/index.ts` (+13): `files.presign·confirm`, `products.addImage·deleteImage` 메서드 추가
+
+설정·테스트:
+- `apps/console/package.json` (+14/-0): `@playwright/test`·`vitest`·`@vitejs/plugin-react` devDep 추가. `test` 스크립트 추가.
+- `apps/console/tsconfig.json` (+10/-0): `paths` 추가·테스트 파일 exclude
+- `apps/console/vitest.config.ts` (신규): vitest 설정 (react plugin)
+- `apps/console/vitest.setup.ts` (신규): vitest 글로벌 setup
+- `apps/console/tsconfig.test.json` (신규): 테스트 전용 tsconfig
+- `apps/console/tsconfig.e2e.json` (신규): Playwright 전용 tsconfig
+- `apps/console/playwright.config.ts` (신규): Playwright 설정 (SC-020)
+- `apps/console/static-verification.test.ts` (신규): 정적 구조 검증 24개
+- `apps/console/components/image-upload.test.tsx` (신규): ImageUpload 단위 테스트 7개 (SC-004~006)
+- `apps/console/app/(dashboard)/layout.test.tsx` (신규): 레이아웃 isAdmin 분기 3개 (SC-017)
+- `apps/console/app/(dashboard)/admin/banners/page.test.tsx` (신규): 배너 페이지 5개 (SC-011·012·019)
+- `apps/console/app/(dashboard)/seller/products/[id]/page.test.tsx` (신규): 상품 이미지 섹션 5개 (SC-007~010)
+- `apps/console/e2e/auth.spec.ts` (신규): Playwright E2E — 로그인 (SC-021)
+- `apps/console/e2e/seller.spec.ts` (신규): Playwright E2E — 판매자 접근 (SC-022)
+- `apps/console/e2e/admin.spec.ts` (신규): Playwright E2E — 관리자 접근 (SC-023)
+- `apps/console/e2e/guard.spec.ts` (신규): Playwright E2E — 가드 (SC-024·025)
+- `pnpm-lock.yaml` (+1193/-0): Playwright + vitest 전이 의존성
+
+**검증**:
+- `pnpm --filter backend test` → **271 passed / 271 total** (기존 261 + SC-001~002 신규 10개. 회귀 0)
+- `pnpm --filter console test` → **44 passed / 44 total** (static-verification 24·image-upload 7·layout 3·banners 5·products/[id] 5. 회귀 0)
+- 총 **315/315 PASS**
+- SC 18/25 파이프라인 검증 PASS. SC-015·016·021~025 (7건) DEFERRED (env:e2e-docker, 옵션 A — 로컬 실행)
+
+**해결**:
+- **GAP-007-01 (2) 해소**: 비관리자에게 admin 메뉴가 노출되는 UX 결함 — `layout.tsx` isAdmin 조건 추가로 해소.
+- `isAdminUserId` 헬퍼 추출(ADR-001): AdminGuard·AuthService 공유 로직 단일 지점화.
+- 쿠키 미러링(ADR-003): localStorage 토큰 → 쿠키 동기화로 Next.js middleware 서버 사이드 가드 가능.
+
+**후속 작업 시 주의사항**:
+- **쿠키 미러링은 클라이언트 신뢰값 (ADR-003)**: `middleware.ts` 의 `isAdmin` 쿠키는 클라이언트가 설정하므로 위변조 가능. 백엔드 `AdminGuard` 가 최종 방어선. middleware 는 UX 보호 추가 계층. admin 라우트 백엔드 권한 검증 생략 금지.
+- **GAP-001 — 상품·배너 모두 `PRODUCT_IMAGE` purpose**: `FilePurpose` enum 에 `BANNER` 없음. 두 용도 모두 `'PRODUCT_IMAGE'` 전송. presign key prefix 만의 의미 차선택. 실 운영 후 enum 확장 필요 시 별도 spec.
+- **`ADMIN_USER_IDS` 미설정 시 전 admin 차단**: 환경변수 미설정 → `isAdminUserId` fail-closed → 모든 사용자 isAdmin=false → middleware `/admin/*` 전면 차단. 배포 시 `ADMIN_USER_IDS` 필수 설정 (infra.md 체크리스트 갱신 권고 — §7).
+- **`CORS_ORIGIN` (011 연계)**: 011 에서 추가된 `.env.example` `CORS_ORIGIN` — 콘솔 개발 서버 origin 미포함 시 API 호출 CORS 오류. 로컬 개발 시 `CORS_ORIGIN=http://localhost:3001` 또는 미설정(fail-open) 확인.
+- **E2E 7건 로컬 실행**: SC-015·016·021~025 는 파이프라인 외 로컬 실행 필요. `coverage-gap.md §E2E 로컬 실행 절차` 참조 (백엔드·콘솔 dev 서버 기동 후 `pnpm --filter console test:e2e` 실행).
+- **`StubFileStorage` → 실 R2 전환 시**: presigned URL 형식 차이로 클라이언트 PUT 실패 가능. 전환 후 이미지 업로드 end-to-end 수동 검증 필수.
+- **배너 imageUrl 입력 완전 대체**: `CreateBannerDialog` 의 텍스트 입력 → `<ImageUpload>` 교체. URL 직접 입력 불가. 이미지 파일 업로드 전용.
+- **context.md 갱신 필요 (GAP-002)**: `shared/auth` 항목에 `admin-ids.ts isAdminUserId 헬퍼` + `GET /auth/me isAdmin 노출` 반영 필요 — gaps.md GAP-002 참조.
+
 ## [011-backend-cors-dev-logging] 구현 완료
 
 > v1.1.0 의 열한 번째 차수 — **백엔드 부트스트랩 보강**: (1) CORS 활성화로 콘솔·모바일 등 교차 출처

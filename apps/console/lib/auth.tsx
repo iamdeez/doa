@@ -13,6 +13,7 @@ import {
 } from 'react';
 import { api } from './api';
 import { browserTokenStore } from './token-store';
+import { COOKIE_KEYS } from './config';
 
 interface AuthState {
   loading: boolean;
@@ -22,10 +23,11 @@ interface AuthState {
   isAuthenticated: boolean;
   isSeller: boolean;
   /**
-   * 관리자 여부. 백엔드는 토큰 클레임이 아닌 ADMIN_USER_IDS env 로 판별하며,
-   * 현재 "내가 관리자인가"를 알려주는 클라이언트 대상 엔드포인트가 없다(문서화된 갭).
-   * admin 라우트는 백엔드 AdminGuard 가 최종 강제하므로 UI 는 항상 진입 허용하되
-   * 403 을 graceful 하게 처리한다. 추후 GET /auth/me 에 isAdmin 노출 시 대체.
+   * 관리자 여부. GET /auth/me 응답의 isAdmin 필드(FR-001) 에서 채움.
+   * 백엔드 ADMIN_USER_IDS env 기반으로 판별한다.
+   * 쿠키 미러링(ADR-003) — hydrate 시 doa_console_admin=true/false 를 기록하여
+   * Next.js middleware 가 /admin/* 라우트를 UX 수준으로 보호한다.
+   * 실제 인가 강제는 백엔드 AdminGuard 가 담당(L2).
    */
   isAdmin: boolean;
   login: (email: string, password: string) => Promise<void>;
@@ -65,6 +67,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const me = await api.auth.me();
       setProfile(me);
       setSellerStatus(await loadSellerStatus());
+      // 쿠키 미러링 (ADR-003): middleware 라우트 가드가 읽을 수 있도록 비-HttpOnly 쿠키 기록.
+      document.cookie = `${COOKIE_KEYS.auth}=1; Path=/; SameSite=Lax`;
+      document.cookie = `${COOKIE_KEYS.admin}=${me.isAdmin ? 'true' : 'false'}; Path=/; SameSite=Lax`;
     } catch {
       setProfile(null);
       setSellerStatus(null);
@@ -93,6 +98,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       await api.auth.logout(refreshToken).catch(() => undefined);
     }
     browserTokenStore.clear();
+    // 쿠키 미러링 제거 (ADR-003): Max-Age=0 으로 즉시 만료.
+    document.cookie = `${COOKIE_KEYS.auth}=; Path=/; Max-Age=0`;
+    document.cookie = `${COOKIE_KEYS.admin}=; Path=/; Max-Age=0`;
     setProfile(null);
     setSellerStatus(null);
   }, []);
@@ -104,7 +112,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       sellerStatus,
       isAuthenticated: profile !== null,
       isSeller: sellerStatus !== null,
-      isAdmin: false,
+      isAdmin: profile?.isAdmin ?? false,
       login,
       logout,
       refresh: hydrate,

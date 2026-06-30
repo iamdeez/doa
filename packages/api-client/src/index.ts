@@ -15,9 +15,12 @@ import type {
   CreateShipmentRequest,
   CreateVariantRequest,
   CursorPage,
+  FileAsset,
   IssueCouponRequest,
   NotificationListResult,
   PlatformOverview,
+  PresignRequest,
+  PresignResult,
   UpdateBannerRequest,
   ListProductsQuery,
   LoginRequest,
@@ -139,6 +142,16 @@ export function createApiClient(options: HttpClientOptions) {
         http.post<ProductVariant>(`/products/${productId}/variants`, body),
       addImage: (productId: string, body: AddImageRequest) =>
         http.post<ProductImage>(`/products/${productId}/images`, body),
+      deleteImage: (productId: string, imageId: string) =>
+        http.delete<void>(`/products/${productId}/images/${imageId}`),
+    },
+
+    files: {
+      /** POST /files/presign — 업로드 presigned URL 발급. */
+      presign: (body: PresignRequest) => http.post<PresignResult>('/files/presign', body),
+      /** POST /files/:id/confirm — 업로드 완료 확인 및 UPLOADED 상태 전이. */
+      confirm: (id: string, size: number) =>
+        http.post<FileAsset>('/files/' + id + '/confirm', { size }),
     },
 
     inventory: {
