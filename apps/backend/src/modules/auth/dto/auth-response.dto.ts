@@ -29,9 +29,17 @@ export class AuthProfileResponse {
   @ApiProperty()
   email!: string;
 
+  @ApiProperty({ type: String, nullable: true, required: false })
+  name?: string | null;
+
   @ApiProperty({ type: String, format: 'date-time' })
   createdAt!: string;
 
   @ApiProperty()
   isAdmin!: boolean;
+}
+
+export class FindEmailResponse {
+  @ApiProperty({ example: 'us**@example.com', description: '마스킹된 이메일' })
+  email!: string;
 }

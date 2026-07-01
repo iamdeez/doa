@@ -15,8 +15,12 @@ import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
 import { RefreshDto } from './dto/refresh.dto';
 import { RegisterDto } from './dto/register.dto';
+import { ForgotPasswordDto } from './dto/forgot-password.dto';
+import { ResetPasswordDto } from './dto/reset-password.dto';
+import { FindEmailDto } from './dto/find-email.dto';
 import {
   AuthProfileResponse,
+  FindEmailResponse,
   LoginResponse,
   RefreshResponse,
   RegisterResponse,
@@ -59,5 +63,26 @@ export class AuthController {
   @ApiOkResponse({ type: AuthProfileResponse })
   async me(@CurrentUser() user: AuthenticatedUser) {
     return this.authService.getProfile(user.userId);
+  }
+
+  @Post('forgot-password')
+  @HttpCode(HttpStatus.OK)
+  async forgotPassword(@Body() dto: ForgotPasswordDto) {
+    await this.authService.forgotPassword(dto.email);
+    return {};
+  }
+
+  @Post('reset-password')
+  @HttpCode(HttpStatus.OK)
+  async resetPassword(@Body() dto: ResetPasswordDto) {
+    await this.authService.resetPassword(dto.email, dto.otp, dto.newPassword);
+    return {};
+  }
+
+  @Post('find-email')
+  @HttpCode(HttpStatus.OK)
+  @ApiOkResponse({ type: FindEmailResponse })
+  async findEmail(@Body() dto: FindEmailDto) {
+    return this.authService.findEmail(dto.phone);
   }
 }

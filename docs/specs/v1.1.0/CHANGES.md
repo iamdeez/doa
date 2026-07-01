@@ -1,3 +1,99 @@
+## [013-flutter-customer-phase2] 구현 완료
+
+> v1.1.0 의 열세 번째 차수 — **Flutter 소비자 앱 Phase 2**: 009 Phase 1에서 이월한 기능들을 구현.
+> (1) 카테고리 화면 재시도 버튼(FR-002/SC-003), (2) 마이페이지 실 사용자 데이터 연동 + 6개 항목 라우팅 연결(FR-003~009),
+> (3) 개인정보수정(PATCH /users/me — FR-004/SC-006~007), (4) 고객 서비스 접근(mailto/FAQ/공지 — FR-005~007),
+> (5) 알림 설정 로컬 영속(shared_preferences — FR-008), (6) 마일리지 준비중 안내(FR-009),
+> (7) 비밀번호 재설정 OTP 플로우(POST /auth/forgot-password, POST /auth/reset-password — FR-010~013),
+> (8) 이메일 찾기(POST /auth/find-email — FR-014~016) + 마스킹 표시(NFR-004),
+> (9) SEC-001 OTP 브루트포스 차단 (`password_reset_otps.attempts` 카운터·5회 무효화·`OTP_MAX_ATTEMPTS=5`, Security Agent BLOCKED 후 Development Agent 수정).
+> base `1798c73` → working tree(미커밋).
+> 변경 추적: `git diff 1798c73 -- apps/backend mobile/customer_app pnpm-lock.yaml` (tracked modified 17 files, +787/-52).
+> 신규(untracked) 파일 20+건은 git add 후 동 커밋에 포함.
+> 신규 의존성: `nodemailer`+`@types/nodemailer`(백엔드 SMTP), `url_launcher`·`shared_preferences`(Flutter).
+> **마이그레이션 있음**: `20260701022235_add_password_reset_otps`, `20260701140100_add_otp_attempts` (additive, zero-downtime).
+> 선택 단계: Security Agent 활성화 (GAP-013-08 SEC-001 High 취약점 발견·수정 완료. GAP-013-09~11 Medium Retrospective 위임).
+
+**변경 파일**:
+
+백엔드 — 수정:
+- `apps/backend/.env.example` (+7): SMTP 환경변수 5종(`SMTP_HOST/PORT/USER/PASS/MAIL_FROM`) 주석 포함 추가
+- `apps/backend/package.json` (+2): `nodemailer` + `@types/nodemailer` devDep 추가
+- `apps/backend/prisma/schema.prisma` (+16): `password_reset_otps` 테이블 신규 선언; `attempts Int @default(0)` 컬럼 추가 (SEC-001)
+- `apps/backend/src/modules/auth/auth.controller.ts` (+25): `POST /auth/forgot-password`, `POST /auth/reset-password`, `POST /auth/find-email` 엔드포인트 추가
+- `apps/backend/src/modules/auth/auth.module.ts` (+2): MailModule 임포트 등록
+- `apps/backend/src/modules/auth/auth.repository.ts` (+73+α): OTP CRUD(`createOtp`, `findOtp`, `invalidateOtps`) + `findUserByPhone` + `revokeAllRefreshTokensByUser` 수정; `incrementOtpAttempts(id)` 메서드 추가 — DB atomic increment (SEC-001)
+- `apps/backend/src/modules/auth/auth.service.ts` (+107+α): `forgotPassword`, `resetPassword`, `findEmail` 서비스 로직 — OTP 해싱·만료 검증·rate-limit 구현; `resetPassword` OTP 불일치 시 `attempts` 증가·`OTP_MAX_ATTEMPTS`(5회) 도달 시 OTP consumed 처리 (SEC-001 브루트포스 차단)
+- `apps/backend/src/modules/auth/auth.service.spec.ts` (+281+2): SC-004/SC-015~SC-024 신규 단위 테스트 + STALE_SC 출처 주석; SEC-001 회귀 테스트 2건(`test_otp_5th_wrong_attempt_invalidates_otp`·`test_otp_after_invalidation_correct_otp_also_rejected`) 추가
+- `apps/backend/src/modules/auth/dto/auth-response.dto.ts` (+8): ForgotPasswordResponse·ResetPasswordResponse·FindEmailResponse DTO 추가
+
+백엔드 — 신규:
+- `apps/backend/prisma/migrations/20260701022235_add_password_reset_otps/migration.sql` (신규): `password_reset_otps` 테이블 DDL
+- `apps/backend/prisma/migrations/20260701140100_add_otp_attempts/migration.sql` (신규): `password_reset_otps.attempts` 컬럼 DDL — `ALTER TABLE ADD COLUMN attempts INTEGER NOT NULL DEFAULT 0` (SEC-001)
+- `apps/backend/src/infrastructure/mail/mail.module.ts` (신규): MailModule — NODE_ENV 기반 SmtpMailer/StubMailer 선택 DI
+- `apps/backend/src/infrastructure/mail/mailer.port.ts` (신규): MailerPort 추상 인터페이스 (`sendMail(to, subject, text)`)
+- `apps/backend/src/infrastructure/mail/smtp.mailer.ts` (신규): SmtpMailer — nodemailer SMTP 구현체
+- `apps/backend/src/infrastructure/mail/stub.mailer.ts` (신규): StubMailer — 테스트·개발 환경 no-op 구현체
+- `apps/backend/src/modules/auth/auth.constants.ts` (신규): `OTP_TTL_MIN=10`, `OTP_RESEND_WINDOW_SEC=60`, `OTP_LENGTH=6`, `OTP_MAX_ATTEMPTS=5` (SEC-001 추가)
+- `apps/backend/src/modules/auth/auth.util.ts` (신규): `maskEmail(email)` 순수 함수 — NFR-004 마스킹 로직
+- `apps/backend/src/modules/auth/auth.util.spec.ts` (신규): maskEmail 단위 테스트 4건 (SC-024)
+- `apps/backend/src/modules/auth/dto/find-email.dto.ts` (신규): FindEmailDto(`phone` 필드)
+- `apps/backend/src/modules/auth/dto/forgot-password.dto.ts` (신규): ForgotPasswordDto(`email` 필드)
+- `apps/backend/src/modules/auth/dto/reset-password.dto.ts` (신규): ResetPasswordDto(`email`·`otp`·`newPassword` 필드)
+- `apps/backend/test/auth-recovery.e2e-spec.ts` (신규): 비밀번호 재설정·이메일 찾기 E2E 7건 (SC-015~018·SC-020·SC-022~023)
+
+Flutter — 수정:
+- `mobile/customer_app/ios/Runner/Info.plist` (+4): url_launcher iOS 스킴 설정 추가
+- `mobile/customer_app/lib/core/providers.dart` (+53): AuthMeProvider·CategoryProvider·ProfileEditNotifier·NotificationSettingsNotifier 등 신규 Provider 추가
+- `mobile/customer_app/lib/features/auth/login_screen.dart` (+22/-?): 비밀번호 재설정·이메일 찾기 링크 onTap 활성화 (SC-014·SC-021)
+- `mobile/customer_app/lib/features/category/category_screen.dart` (+17/-?): 재시도 버튼 추가(SC-003), 하드코딩 제거 확인(SC-002)
+- `mobile/customer_app/lib/features/mypage/mypage_screen.dart` (+82/-?): 실 사용자 데이터 연동(SC-004), 6개 항목 라우팅 연결
+- `mobile/customer_app/pubspec.lock` (+120): url_launcher·shared_preferences 전이 의존성 잠금
+- `mobile/customer_app/pubspec.yaml` (+2): `url_launcher`·`shared_preferences` 선언
+
+Flutter — 신규:
+- `mobile/customer_app/lib/core/constants.dart` (신규): `kSupportEmail` 상수 — SC-009 고객지원 이메일 리터럴 제거
+- `mobile/customer_app/lib/core/router.dart` (신규): GoRouter 기반 앱 라우터 — 화면 간 네비게이션 통합
+- `mobile/customer_app/lib/features/auth/find_email_screen.dart` (신규): 이메일 찾기 화면 (SC-021~024)
+- `mobile/customer_app/lib/features/auth/forgot_password_screen.dart` (신규): 비밀번호 재설정 요청 + OTP 입력 화면 (SC-014~020)
+- `mobile/customer_app/lib/features/mypage/mileage_screen.dart` (신규): 마일리지 준비중 안내 화면 (SC-013)
+- `mobile/customer_app/lib/features/mypage/profile_edit_screen.dart` (신규): 개인정보수정 화면 (SC-006~007)
+- `mobile/customer_app/lib/features/notification/` (신규): 알림 설정 화면 디렉토리 (SC-012)
+- `mobile/customer_app/lib/features/support/` (신규): 고객지원(FAQ·공지·1:1문의) 화면 디렉토리 (SC-008~011)
+- `mobile/customer_app/test/static_verification_test.dart` (신규): 정적 검증 테스트 9건 (SC-002·005·009·010·011·013 보조·026 보조)
+- `mobile/customer_app/test/features/` (신규): Flutter 위젯·단위 테스트 파일 10종 (SC-001·003~008·010~014·019·021·024)
+
+공통:
+- `pnpm-lock.yaml` (+19): nodemailer 백엔드 전이 의존성 잠금
+
+**검증**:
+- 백엔드 단위: 30/30 PASS (`auth.service.spec.ts` — SEC-001 회귀 테스트 2건 포함)
+- 백엔드 util 단위: 5/5 PASS (`auth.util.spec.ts`)
+- 백엔드 E2E: 7/7 PASS (`test/auth-recovery.e2e-spec.ts`)
+- Flutter: 28/28 PASS (위젯·단위·정적 검증 10종)
+- 총 **65/65 PASS** (SEC-001 수정 후 재검증 완료 — pipeline-log: backend 30+e2e 7+Flutter 28)
+- SC-025 (P95 3초): 운영 모니터링 deferred
+- SC-026 (flutter analyze 0 issues): CI 위임 (test 파일 6 issues, lib/ 0건)
+
+**해결된 GAP**:
+- **GAP-013-05 해소**: `auth.repository.ts` `revokeAllRefreshTokensByUser` `this.prisma.tx` → `this.prisma` 수정 (E2E SC-017 PASS 확인)
+- **GAP-013-06 해소**: `faq_screen.dart` 정적 FAQ 항목 1개 이상 추가 (SC-010 PASS 확인)
+- **GAP-013-07 해소**: `notice_screen.dart` 정적 공지 항목 1개 이상 추가 (SC-011 PASS 확인)
+- **GAP-013-08 해소**: SEC-001 OTP 브루트포스 — `password_reset_otps.attempts` 컬럼·마이그레이션 `20260701140100_add_otp_attempts`·`OTP_MAX_ATTEMPTS=5`·`incrementOtpAttempts`·`resetPassword` 5회 도달 시 consumed 처리 완료. 회귀 테스트 2건 추가. 65/65 PASS 확인.
+
+**후속 작업 시 주의사항**:
+- **SMTP 환경변수 5종 Fly secret 필수**: `SMTP_HOST`·`SMTP_PORT`·`SMTP_USER`·`SMTP_PASS`·`MAIL_FROM` 미설정 시 비밀번호 재설정 OTP 발송 불가. `.env.example` 참조. infra.md §7 갱신 필요 (GAP-013-03).
+- **OTP 상수 위치**: `apps/backend/src/modules/auth/auth.constants.ts` — `OTP_TTL_MIN=10`(분), `OTP_RESEND_WINDOW_SEC=60`(초), `OTP_MAX_ATTEMPTS=5`(SEC-001 브루트포스 차단 상수). 변경 시 infra.md §8 갱신 필요 (GAP-013-03).
+- **flutter analyze test 파일 6 issues**: `lib/` 0건. CI `flutter analyze` 실행 시 test 파일 경고 발생. `coverage-gap.md` 해소 방법 참조.
+- **url_launcher iOS Info.plist 필수**: `LSApplicationQueriesSchemes` 추가됨. iOS 배포 시 빌드 검증 필수.
+- **phone 비유니크 — findEmail 첫 매치 반환**: `users.phone` 유니크 제약 없음. 동일 전화번호 복수 가입 시 첫 건 반환 (ADR-007). 운영 검증 필요.
+- **알림 설정 백엔드 미연동**: `shared_preferences` 로컬 저장만. 서버 알림 제어는 별도 spec.
+- **GAP-013-03/04 미해결**: infra.md(SMTP 환경변수·OTP 임계값·마이그레이션)·context.md(auth 모듈·MailerPort) 갱신 — Retrospective Agent 위임.
+- **Security Agent GAP 미해결(GAP-013-09~11)**: user enumeration IP rate limit(Medium)·resetPassword revoke 원자성(Medium)·보안 감사 로깅(Medium) — Retrospective Agent 위임.
+- **소셜 로그인 014 이월 유지**: LoginScreen 소셜 버튼 placeholder UI. onTap 미구현.
+
+---
+
 ## [012-console-phase4-polish] 구현 완료
 
 > v1.1.0 의 열두 번째 차수 — **콘솔 Phase 4 마감**: (1) 백엔드 `GET /auth/me` 응답에 `isAdmin` 필드 추가(FR-001),

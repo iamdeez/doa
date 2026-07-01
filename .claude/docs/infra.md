@@ -186,6 +186,7 @@ pnpm --filter backend test:e2e
 - [ ] GitHub Actions CI 전체 통과 확인
 - [ ] `ADMIN_USER_IDS` Fly secret 설정 확인 (seller 승인/거부 권한. **fail-closed** — 미설정 시 모든 승인 차단)
 - [ ] `CORS_ORIGIN` Fly secret 설정 확인 (콤마구분 허용 origin 화이트리스트. **fail-open** — 미설정 시 전체 허용. 운영에서는 콘솔·모바일 origin 만 명시 필수)
+- [ ] SMTP Fly secret 설정 확인 (`SMTP_HOST`·`SMTP_PORT`·`SMTP_USER`·`SMTP_PASS`·`MAIL_FROM`). 미설정 시 비밀번호 재설정 OTP 이메일 발송 불가. `NODE_ENV=production` 에서 `SmtpMailer` 활성 (013-flutter-customer-phase2)
 
 ---
 
@@ -203,3 +204,5 @@ pnpm --filter backend test:e2e
 | pg-boss `pgboss` 스키마 자동 생성 | pg-boss 가 앱 기동 시 동일 `DATABASE_URL` PostgreSQL 에 `pgboss` 스키마를 자동 생성 → DB 사용자에게 **스키마 생성(CREATE) 권한 필요**. Fly Postgres 운영 사용자 권한 확인 | `infrastructure/pgboss`·운영 | 003-commerce |
 | pg-boss 버전 핀 (`^10.4.2`) | CommonJS·Node≥20 호환 버전 고정. v11(Node≥22)·v12(ESM·Node≥22.12)는 본 프로젝트(Node 20·CommonJS)와 비호환. import 는 `import PgBoss = require('pg-boss')`(default import 금지 — 런타임 constructor 실패) | `infrastructure/pgboss` | 003-commerce |
 | deferred 성능 SC 사후 점검 (PROC-03) | SC-045/046(주문/결제 P95 integration)은 TEST_JWT_TOKEN·운영 시드 부재로 파이프라인 내 deferred. **운영 시드 구성 후 P95 측정** 필요(아래 §4 모니터링 연계) | 운영 | 003-commerce coverage-gap |
+| SMTP 이메일 발송 의존성 | 비밀번호 재설정 OTP 발송은 SMTP provider(nodemailer) 필요. `SMTP_*` secret 미설정 시 발송 실패(서비스는 500 미전파 — OTP DB 선기록으로 격리). 운영 SMTP provider 선정·secret 주입 필수 | `auth` 모듈·운영 | 013-flutter-customer-phase2 |
+| OTP 운영 임계값 | 비밀번호 재설정 OTP: 유효기간 `OTP_TTL_MIN=10`분·재발송 간격 `OTP_RESEND_WINDOW_SEC=60`초·최대 시도 `OTP_MAX_ATTEMPTS=5`회(초과 시 소비 처리·브루트포스 차단, SEC-001). `auth.constants.ts` 정의. 신규 마이그레이션 2종(`20260701022235_add_password_reset_otps`·`20260701140100_add_otp_attempts`)은 `prisma migrate deploy` 자동 적용 | `auth` 모듈 | 013-flutter-customer-phase2 |

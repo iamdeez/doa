@@ -1,24 +1,36 @@
 /**
  * AuthService 단위 테스트 — [env:unit]
  *
- * 대상 SC: SC-001, SC-002(보조), SC-010, SC-013, SC-014, SC-016, SC-017
- * 검증 방법: Jest mock (AuthRepository·JwtService·ConfigService·bcrypt)
+ * 대상 SC: SC-001, SC-002(보조), SC-004(name 필드), SC-010, SC-013, SC-014, SC-016, SC-017
+ *          + SC-015~018·SC-020(forgotPassword), SC-017~018(resetPassword), SC-022~023(findEmail)
+ *          [013-flutter-customer-phase2 확장]
+ * 검증 방법: Jest mock (AuthRepository·JwtService·ConfigService·bcrypt·MailerPort)
  *
  * 주의 (PROC-001 — TS 버전):
  *   - mock 객체의 필드 값은 실제 타입에 맞게 설정한다.
  *   - bcrypt.compare 는 jest.spyOn 으로 module-level mock 처리.
  *   - signAsync 호출 인자(expiresIn)를 정확히 검증한다.
  *   - getProfile isAdmin 테스트 시 process.env['ADMIN_USER_IDS'] 를 설정·복원한다.
+ *   - MailerPort mock: sendOtpEmail 부수효과 검증용.
  */
 
 import { Test, TestingModule } from '@nestjs/testing';
-import { ConflictException, UnauthorizedException } from '@nestjs/common';
+import {
+  ConflictException,
+  HttpException,
+  HttpStatus,
+  NotFoundException,
+  BadRequestException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 
 import { AuthService } from './auth.service';
 import { AuthRepository } from './auth.repository';
+// MailerPort: apps/backend/src/infrastructure/mail/mailer.port.ts (구현 완료 시 존재)
+import { MailerPort } from '../../infrastructure/mail/mailer.port';
 
 // ─────────────────────────────────────────────
 // 상수 (plan.md·tasks.md T-B1 상수화 원칙 — 매직넘버 금지)
@@ -37,6 +49,18 @@ const mockAuthRepository = {
   createRefreshToken: jest.fn(),
   findRefreshTokenByHash: jest.fn(),
   revokeRefreshToken: jest.fn(),
+  // 013 확장: OTP·phone 관련
+  createOtp: jest.fn(),
+  findLatestOtpByEmail: jest.fn(),
+  markOtpConsumed: jest.fn(),
+  findFirstUserByPhone: jest.fn(),
+  revokeAllRefreshTokensByUser: jest.fn(),
+  // SEC-001: OTP 브루트포스 차단 메서드
+  incrementOtpAttempts: jest.fn(),
+};
+
+const mockMailerPort = {
+  sendOtpEmail: jest.fn(),
 };
 
 const mockJwtService = {
@@ -63,8 +87,38 @@ const FIXED_USER = {
   id: 'user-fixed-id',
   email: 'test@example.com',
   password: '$2b$10$hashedPassword',   // bcrypt 해시 형태
+  name: 'Test User',
+  phone: '01012345678',
   createdAt: new Date('2026-01-01T00:00:00.000Z'),
 };
+
+// OTP 픽스처 (013 확장)
+const OTP_TTL_MIN = 10;
+const OTP_RESEND_WINDOW_SEC = 60;
+
+// OTP_MAX_ATTEMPTS: auth.constants.ts 와 동일값 — 상수 import 없이 로컬 정의(테스트 격리)
+const OTP_MAX_ATTEMPTS = 5;
+
+function makeOtpRecord(overrides: Partial<{
+  id: string;
+  email: string;
+  otpHash: string;
+  expiresAt: Date;
+  consumedAt: Date | null;
+  attempts: number;
+  createdAt: Date;
+}> = {}) {
+  return {
+    id: 'otp-id-001',
+    email: FIXED_USER.email,
+    otpHash: 'sha256hashvalue',
+    expiresAt: new Date(Date.now() + OTP_TTL_MIN * 60 * 1000),
+    consumedAt: null,
+    attempts: 0,
+    createdAt: new Date(),
+    ...overrides,
+  };
+}
 
 describe('AuthService', () => {
   let service: AuthService;
@@ -81,6 +135,7 @@ describe('AuthService', () => {
         { provide: AuthRepository, useValue: mockAuthRepository },
         { provide: JwtService, useValue: mockJwtService },
         { provide: ConfigService, useValue: mockConfigService },
+        { provide: MailerPort, useValue: mockMailerPort },
       ],
     }).compile();
 
@@ -99,10 +154,10 @@ describe('AuthService', () => {
   // ─────────────────────────────────────────────
   // SC-001: getProfile 반환에 isAdmin 포함
   // ─────────────────────────────────────────────
-  describe('SC-001: getProfile 응답에 isAdmin 포함 (FR-001)', () => {
+  describe('SC-001: getProfile 응답에 isAdmin 포함 (FR-001) (v1.1.0/012 spec)', () => {
     it('when_getProfile_then_isAdmin_in_response', async () => {
       /**
-       * SC-001 (FR-001 관련):
+       * SC-001 (FR-001 관련) (v1.1.0/012 spec):
        * getProfile(userId) 반환 객체에 isAdmin: boolean 필드가 포함되어야 한다.
        * ADMIN_USER_IDS 미설정 → isAdmin: false (fail-closed).
        */
@@ -118,7 +173,7 @@ describe('AuthService', () => {
 
     it('when_getProfile_admin_user_then_isAdmin_true', async () => {
       /**
-       * SC-001 보조 + SC-002 (FR-001 관련):
+       * SC-001 보조 + SC-002 (FR-001 관련) (v1.1.0/012 spec):
        * ADMIN_USER_IDS에 userId 포함 시 getProfile 응답의 isAdmin = true.
        */
       process.env['ADMIN_USER_IDS'] = FIXED_USER.id;
@@ -131,7 +186,7 @@ describe('AuthService', () => {
 
     it('when_getProfile_non_admin_user_then_isAdmin_false', async () => {
       /**
-       * SC-001 보조 + SC-002 (FR-001 관련):
+       * SC-001 보조 + SC-002 (FR-001 관련) (v1.1.0/012 spec):
        * ADMIN_USER_IDS에 userId 미포함 시 getProfile 응답의 isAdmin = false.
        */
       process.env['ADMIN_USER_IDS'] = 'other-admin-id';
@@ -294,6 +349,284 @@ describe('AuthService', () => {
       await expect(
         service.refresh({ refreshToken: 'revoked.flag.token' }),
       ).rejects.toThrow(UnauthorizedException);
+    });
+  });
+
+  // ─────────────────────────────────────────────
+  // SC-004: getProfile 반환에 name 필드 포함 (013 확장)
+  // ─────────────────────────────────────────────
+  describe('SC-004: getProfile 응답에 name 필드 포함 (FR-003 관련) (v1.1.0/013 spec)', () => {
+    it('when_getProfile_then_name_in_response', async () => {
+      /**
+       * SC-004 (FR-003 관련) (v1.1.0/013 spec):
+       * getProfile(userId) 반환 객체에 name: string | null 필드가 포함되어야 한다.
+       * ADR-002: GET /auth/me additive name 추가.
+       */
+      delete process.env['ADMIN_USER_IDS'];
+      mockAuthRepository.findUserById.mockResolvedValue(FIXED_USER);
+
+      const result = await service.getProfile(FIXED_USER.id);
+
+      expect(result).toHaveProperty('name');
+      // FIXED_USER.name = 'Test User'
+      expect(result.name).toBe('Test User');
+    });
+
+    it('when_getProfile_user_null_name_then_name_null', async () => {
+      /**
+       * SC-004 보조 (v1.1.0/013 spec): name이 null인 사용자도 name: null로 반환.
+       */
+      const userNoName = { ...FIXED_USER, name: null };
+      mockAuthRepository.findUserById.mockResolvedValue(userNoName);
+
+      const result = await service.getProfile(FIXED_USER.id);
+
+      expect(result.name).toBeNull();
+    });
+  });
+
+  // ─────────────────────────────────────────────
+  // SC-015/016/020: forgotPassword (013 확장)
+  // ─────────────────────────────────────────────
+  describe('SC-015/016/020: forgotPassword (FR-011, NFR-003 관련)', () => {
+    it('test_forgot_registered_returns_200 — 정상: createOtp + sendOtpEmail 호출', async () => {
+      /**
+       * SC-015 Happy Path (단위 분기 검증):
+       * 등록된 이메일로 forgotPassword 호출 시
+       * createOtp + mailer.sendOtpEmail 이 각각 1회 호출되고 void 반환(200).
+       * rate-limit 없음: findLatestOtpByEmail = null (이전 OTP 없음).
+       */
+      mockAuthRepository.findUserByEmail.mockResolvedValue(FIXED_USER);
+      mockAuthRepository.findLatestOtpByEmail.mockResolvedValue(null);
+      mockAuthRepository.createOtp.mockResolvedValue(makeOtpRecord());
+      mockMailerPort.sendOtpEmail.mockResolvedValue(undefined);
+
+      await expect(service.forgotPassword(FIXED_USER.email)).resolves.toBeUndefined();
+
+      expect(mockAuthRepository.createOtp).toHaveBeenCalledTimes(1);
+      expect(mockMailerPort.sendOtpEmail).toHaveBeenCalledTimes(1);
+      expect(mockMailerPort.sendOtpEmail).toHaveBeenCalledWith(
+        FIXED_USER.email,
+        expect.any(String), // 6자리 OTP
+      );
+    });
+
+    it('test_forgot_unregistered_returns_404 — 미가입 이메일 → NotFoundException', async () => {
+      /**
+       * SC-016 Error Case:
+       * 미가입 이메일로 forgotPassword → NotFoundException (HTTP 404).
+       */
+      mockAuthRepository.findUserByEmail.mockResolvedValue(null);
+
+      await expect(service.forgotPassword('notexist@example.com')).rejects.toThrow(
+        NotFoundException,
+      );
+
+      expect(mockAuthRepository.createOtp).not.toHaveBeenCalled();
+      expect(mockMailerPort.sendOtpEmail).not.toHaveBeenCalled();
+    });
+
+    it('test_forgot_twice_returns_429 — 1분 이내 재발송 → 429 TooManyRequests', async () => {
+      /**
+       * SC-020 Error Case (NFR-003):
+       * 1분 이내 이전 OTP 존재 시 HttpException(429) 발생.
+       * findLatestOtpByEmail.createdAt > now - OTP_RESEND_WINDOW_SEC(60).
+       */
+      mockAuthRepository.findUserByEmail.mockResolvedValue(FIXED_USER);
+      // createdAt = 30초 전 → rate-limit 범위 내
+      const recentOtp = makeOtpRecord({
+        createdAt: new Date(Date.now() - 30_000),
+      });
+      mockAuthRepository.findLatestOtpByEmail.mockResolvedValue(recentOtp);
+
+      await expect(service.forgotPassword(FIXED_USER.email)).rejects.toThrow(HttpException);
+
+      // HTTP 429 확인
+      try {
+        await service.forgotPassword(FIXED_USER.email);
+      } catch (e) {
+        if (e instanceof HttpException) {
+          expect(e.getStatus()).toBe(HttpStatus.TOO_MANY_REQUESTS);
+        }
+      }
+    });
+  });
+
+  // ─────────────────────────────────────────────
+  // SC-017/018: resetPassword (013 확장)
+  // ─────────────────────────────────────────────
+  describe('SC-017/018: resetPassword (FR-012, NFR-002 관련)', () => {
+    it('test_reset_valid_otp_changes_password — 정상: 비밀번호 변경 + OTP consumed', async () => {
+      /**
+       * SC-017 Happy Path:
+       * 유효한 OTP·이메일·새 비밀번호 → void 반환(200).
+       * markOtpConsumed + revokeAllRefreshTokensByUser 호출.
+       */
+      const PLAIN_OTP = '123456';
+      // otpHash = sha256('123456') — production 구현 동일 알고리즘
+      const crypto = require('crypto');
+      const hash = crypto.createHash('sha256').update(PLAIN_OTP).digest('hex');
+
+      mockAuthRepository.findUserByEmail.mockResolvedValue(FIXED_USER);
+      mockAuthRepository.findLatestOtpByEmail.mockResolvedValue(
+        makeOtpRecord({ otpHash: hash }),
+      );
+      mockAuthRepository.markOtpConsumed.mockResolvedValue(undefined);
+      mockAuthRepository.revokeAllRefreshTokensByUser.mockResolvedValue(undefined);
+      jest.spyOn(bcrypt, 'hash').mockImplementation(() => Promise.resolve('$2b$10$newHash'));
+
+      await expect(
+        service.resetPassword(FIXED_USER.email, PLAIN_OTP, 'NewPassword123!'),
+      ).resolves.toBeUndefined();
+
+      expect(mockAuthRepository.markOtpConsumed).toHaveBeenCalledTimes(1);
+      expect(mockAuthRepository.revokeAllRefreshTokensByUser).toHaveBeenCalledTimes(1);
+    });
+
+    it('when_no_otp_then_400 — OTP 없음 → BadRequestException', async () => {
+      /**
+       * SC-018 Error (no OTP):
+       * findLatestOtpByEmail = null → BadRequestException(400).
+       */
+      mockAuthRepository.findUserByEmail.mockResolvedValue(FIXED_USER);
+      mockAuthRepository.findLatestOtpByEmail.mockResolvedValue(null);
+
+      await expect(
+        service.resetPassword(FIXED_USER.email, '000000', 'anyPass'),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('test_reset_expired_otp_rejected — 만료 OTP → BadRequestException', async () => {
+      /**
+       * SC-018 Edge/Error Case (NFR-002):
+       * 발급 후 10분 경과 OTP(expiresAt 과거) → BadRequestException(400).
+       */
+      mockAuthRepository.findUserByEmail.mockResolvedValue(FIXED_USER);
+      mockAuthRepository.findLatestOtpByEmail.mockResolvedValue(
+        makeOtpRecord({
+          expiresAt: new Date(Date.now() - 1000), // 이미 만료
+        }),
+      );
+
+      await expect(
+        service.resetPassword(FIXED_USER.email, '000000', 'anyPass'),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('when_consumed_otp_then_400 — 이미 소비된 OTP → BadRequestException', async () => {
+      /**
+       * SC-018 보조: consumedAt != null → 400 재사용 차단.
+       */
+      mockAuthRepository.findUserByEmail.mockResolvedValue(FIXED_USER);
+      mockAuthRepository.findLatestOtpByEmail.mockResolvedValue(
+        makeOtpRecord({ consumedAt: new Date() }),
+      );
+
+      await expect(
+        service.resetPassword(FIXED_USER.email, '000000', 'anyPass'),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('when_otp_mismatch_then_400 — OTP 불일치 → BadRequestException', async () => {
+      /**
+       * SC-018 보조: sha256(입력) !== otpHash → 400.
+       * SEC-001: incrementOtpAttempts 호출, attempts < OTP_MAX_ATTEMPTS → markOtpConsumed 미호출.
+       */
+      mockAuthRepository.findUserByEmail.mockResolvedValue(FIXED_USER);
+      mockAuthRepository.findLatestOtpByEmail.mockResolvedValue(
+        makeOtpRecord({ otpHash: 'correcthash' }),
+      );
+      // 1회 불일치: attempts=1 < OTP_MAX_ATTEMPTS(5) → 무효화 없음
+      mockAuthRepository.incrementOtpAttempts.mockResolvedValue(makeOtpRecord({ attempts: 1 }));
+
+      await expect(
+        service.resetPassword(FIXED_USER.email, '999999', 'anyPass'),
+      ).rejects.toThrow(BadRequestException);
+
+      expect(mockAuthRepository.incrementOtpAttempts).toHaveBeenCalledWith('otp-id-001');
+      expect(mockAuthRepository.markOtpConsumed).not.toHaveBeenCalled();
+    });
+  });
+
+  // ─────────────────────────────────────────────
+  // SEC-001 regression: OTP 브루트포스 차단
+  // ─────────────────────────────────────────────
+  describe('SEC-001 regression: OTP 브루트포스 차단 (5회 시도 → 무효화)', () => {
+    it('test_otp_5th_wrong_attempt_invalidates_otp', async () => {
+      /**
+       * SEC-001 regression (GAP-013-08):
+       * 5번째 잘못된 OTP 시도 시 attempts 가 OTP_MAX_ATTEMPTS(5) 에 도달하면
+       * markOtpConsumed 가 호출되어 OTP 가 무효화(consumed 처리)된다.
+       * 이후 올바른 OTP 로도 재설정 불가 — consumedAt 체크로 거부.
+       */
+      // 5번째 잘못된 시도: incrementOtpAttempts 반환값 = attempts: 5 (max)
+      mockAuthRepository.findLatestOtpByEmail.mockResolvedValue(
+        makeOtpRecord({ otpHash: 'correcthash_not_matching_input' }),
+      );
+      mockAuthRepository.incrementOtpAttempts.mockResolvedValue(
+        makeOtpRecord({ attempts: OTP_MAX_ATTEMPTS }),
+      );
+      mockAuthRepository.markOtpConsumed.mockResolvedValue(undefined);
+
+      await expect(
+        service.resetPassword(FIXED_USER.email, '000000', 'anyPass'),
+      ).rejects.toThrow(BadRequestException);
+
+      // attempts 증가 후 max 도달 → markOtpConsumed 호출(무효화)
+      expect(mockAuthRepository.incrementOtpAttempts).toHaveBeenCalledWith('otp-id-001');
+      expect(mockAuthRepository.markOtpConsumed).toHaveBeenCalledWith('otp-id-001');
+    });
+
+    it('test_otp_after_invalidation_correct_otp_also_rejected', async () => {
+      /**
+       * SEC-001 regression — 무효화 이후 검증:
+       * 이미 consumedAt 이 설정된(무효화된) OTP 레코드에 올바른 OTP 를 제출해도
+       * "OTP already used" BadRequestException 이 발생한다(새 OTP 발급 필요).
+       */
+      const PLAIN_OTP = '123456';
+      const crypto = require('crypto');
+      const hash = crypto.createHash('sha256').update(PLAIN_OTP).digest('hex');
+
+      // consumedAt 이 설정된 레코드 — 이전 max attempts 도달로 무효화된 상태
+      mockAuthRepository.findLatestOtpByEmail.mockResolvedValue(
+        makeOtpRecord({ otpHash: hash, consumedAt: new Date() }),
+      );
+
+      await expect(
+        service.resetPassword(FIXED_USER.email, PLAIN_OTP, 'NewPass123!'),
+      ).rejects.toThrow(BadRequestException);
+
+      // 무효화 상태이므로 incrementOtpAttempts 가 호출되지 않아야 함
+      expect(mockAuthRepository.incrementOtpAttempts).not.toHaveBeenCalled();
+    });
+  });
+
+  // ─────────────────────────────────────────────
+  // SC-022/023: findEmail (013 확장)
+  // ─────────────────────────────────────────────
+  describe('SC-022/023: findEmail (FR-015, NFR-004 관련)', () => {
+    it('test_find_email_returns_masked — 등록 phone → 마스킹 이메일 반환', async () => {
+      /**
+       * SC-022 Happy Path:
+       * 등록된 전화번호로 findEmail → { email: 'te**@example.com' } 형태 반환.
+       */
+      mockAuthRepository.findFirstUserByPhone.mockResolvedValue(FIXED_USER);
+
+      const result = await service.findEmail(FIXED_USER.phone!);
+
+      expect(result).toHaveProperty('email');
+      // maskEmail('test@example.com') → 'te**@example.com'
+      expect(result.email).toBe('te**@example.com');
+    });
+
+    it('test_find_email_unregistered_404 — 미등록 phone → NotFoundException', async () => {
+      /**
+       * SC-023 Error Case:
+       * 미등록 전화번호로 findEmail → NotFoundException (HTTP 404).
+       */
+      mockAuthRepository.findFirstUserByPhone.mockResolvedValue(null);
+
+      await expect(service.findEmail('01099999999')).rejects.toThrow(NotFoundException);
     });
   });
 

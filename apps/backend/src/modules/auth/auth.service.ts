@@ -1,18 +1,25 @@
 import {
+  BadRequestException,
   ConflictException,
+  HttpException,
+  HttpStatus,
   Injectable,
+  NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
-import { createHash, randomUUID } from 'node:crypto';
+import { createHash, randomInt, randomUUID } from 'node:crypto';
 import {
   JWT_ACCESS_TTL_SECONDS,
   JWT_REFRESH_TTL_DAYS,
 } from '../../shared/config/jwt.config';
 import { isAdminUserId } from '../../shared/auth/admin-ids';
+import { MailerPort } from '../../infrastructure/mail/mailer.port';
 import { AuthRepository } from './auth.repository';
+import { OTP_LENGTH, OTP_MAX_ATTEMPTS, OTP_RESEND_WINDOW_SEC, OTP_TTL_MIN } from './auth.constants';
+import { maskEmail } from './auth.util';
 
 // 비밀번호 bcrypt cost factor (ADR-001: cost 10~12)
 // cost 10 선택 이유: cost 12 에서 P95 859ms → NFR-002(500ms) 초과.
@@ -28,6 +35,7 @@ interface JwtPayload {
 export interface UserProfile {
   id: string;
   email: string;
+  name?: string | null;
   createdAt: Date;
   isAdmin: boolean;
 }
@@ -46,16 +54,21 @@ export interface RefreshResult {
   accessToken: string;
 }
 
+export interface FindEmailResult {
+  email: string;
+}
+
 @Injectable()
 export class AuthService {
   constructor(
     private readonly authRepository: AuthRepository,
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
+    private readonly mailer: MailerPort,
   ) {}
 
   // ──────────────────────────────────────────────
-  // T-B3: register
+  // register
   // ──────────────────────────────────────────────
 
   async register(input: { email: string; password: string }): Promise<RegisterResult> {
@@ -74,7 +87,7 @@ export class AuthService {
   }
 
   // ──────────────────────────────────────────────
-  // T-B4: login — access + refresh 동일 분기에서 발급
+  // login — access + refresh 동일 분기에서 발급
   // ──────────────────────────────────────────────
 
   async login(input: { email: string; password: string }): Promise<LoginResult> {
@@ -123,7 +136,7 @@ export class AuthService {
   }
 
   // ──────────────────────────────────────────────
-  // T-B5: refresh
+  // refresh
   // ──────────────────────────────────────────────
 
   async refresh(input: { refreshToken: string }): Promise<RefreshResult> {
@@ -159,7 +172,7 @@ export class AuthService {
   }
 
   // ──────────────────────────────────────────────
-  // T-B6: logout
+  // logout
   // ──────────────────────────────────────────────
 
   async logout(input: { refreshToken: string }): Promise<void> {
@@ -168,7 +181,7 @@ export class AuthService {
   }
 
   // ──────────────────────────────────────────────
-  // T-B7: me / getProfile
+  // me / getProfile — name 필드 additive 추가
   // ──────────────────────────────────────────────
 
   async getProfile(userId: string): Promise<UserProfile> {
@@ -177,7 +190,93 @@ export class AuthService {
       throw new UnauthorizedException('User not found');
     }
     const isAdmin = isAdminUserId(userId, process.env['ADMIN_USER_IDS']);
-    return { id: user.id, email: user.email, createdAt: user.createdAt, isAdmin };
+    return { id: user.id, email: user.email, name: user.name, createdAt: user.createdAt, isAdmin };
+  }
+
+  // ──────────────────────────────────────────────
+  // forgotPassword — OTP 발급·이메일 전송
+  // ──────────────────────────────────────────────
+
+  async forgotPassword(email: string): Promise<void> {
+    const user = await this.authRepository.findUserByEmail(email);
+    if (!user) {
+      // 미가입 이메일에도 동일 오류 반환 (SC-016 spec 요구)
+      throw new NotFoundException('Email not found');
+    }
+
+    // 60초 이내 재요청 차단 (SC-020: 1분 이내 2회 요청 → 429)
+    const latest = await this.authRepository.findLatestOtpByEmail(email);
+    if (latest) {
+      const elapsed = (Date.now() - latest.createdAt.getTime()) / 1000;
+      if (elapsed < OTP_RESEND_WINDOW_SEC) {
+        throw new HttpException('Too many requests. Please wait before retrying.', HttpStatus.TOO_MANY_REQUESTS);
+      }
+    }
+
+    // 6자리 숫자 OTP 생성 — SHA-256 해시만 저장
+    const otp = String(randomInt(10 ** (OTP_LENGTH - 1), 10 ** OTP_LENGTH));
+    const otpHash = this.hashToken(otp);
+    const expiresAt = new Date(Date.now() + OTP_TTL_MIN * 60 * 1000);
+
+    await this.authRepository.createOtp({ email, otpHash, expiresAt });
+    await this.mailer.sendOtpEmail(email, otp);
+  }
+
+  // ──────────────────────────────────────────────
+  // resetPassword — OTP 검증 + 비밀번호 변경
+  // 원자성: markOtpConsumed 내부에서 비밀번호 업데이트 + OTP 소비를 단일 트랜잭션으로 처리.
+  // 세션 전체 폐기는 별도 호출 (OTP 소비 이후 best-effort).
+  // ──────────────────────────────────────────────
+
+  async resetPassword(email: string, otp: string, newPassword: string): Promise<void> {
+    const otpHash = this.hashToken(otp);
+    const record = await this.authRepository.findLatestOtpByEmail(email);
+
+    if (!record) {
+      throw new BadRequestException('Invalid or expired OTP');
+    }
+    if (record.consumedAt) {
+      throw new BadRequestException('OTP already used');
+    }
+    if (record.expiresAt <= new Date()) {
+      throw new BadRequestException('OTP expired');
+    }
+    if (record.otpHash !== otpHash) {
+      // 시도 횟수 증가 후 최대 도달 시 OTP 무효화 (SEC-001 브루트포스 차단)
+      const updated = await this.authRepository.incrementOtpAttempts(record.id);
+      if (updated.attempts >= OTP_MAX_ATTEMPTS) {
+        await this.authRepository.markOtpConsumed(record.id);
+        throw new BadRequestException('Too many invalid attempts. Please request a new OTP.');
+      }
+      throw new BadRequestException('Invalid OTP');
+    }
+
+    const user = await this.authRepository.findUserByEmail(email);
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    const hashedPassword = await bcrypt.hash(newPassword, BCRYPT_SALT_ROUNDS);
+
+    // 비밀번호 업데이트 + OTP 소비 (repository 내부 트랜잭션으로 원자 처리)
+    await this.authRepository.markOtpConsumed(record.id, {
+      userId: user.id,
+      hashedPassword,
+    });
+    // 세션 전체 폐기
+    await this.authRepository.revokeAllRefreshTokensByUser(user.id);
+  }
+
+  // ──────────────────────────────────────────────
+  // findEmail — 전화번호로 마스킹 이메일 반환
+  // ──────────────────────────────────────────────
+
+  async findEmail(phone: string): Promise<FindEmailResult> {
+    const user = await this.authRepository.findFirstUserByPhone(phone);
+    if (!user) {
+      throw new NotFoundException('No account found for this phone number');
+    }
+    return { email: maskEmail(user.email) };
   }
 
   // ──────────────────────────────────────────────

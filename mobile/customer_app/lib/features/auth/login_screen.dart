@@ -4,6 +4,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/providers.dart';
 import '../../theme/app_theme.dart';
+import 'find_email_screen.dart';
+import 'forgot_password_screen.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
@@ -133,12 +135,20 @@ class _LinkRow extends StatelessWidget {
     const style = TextStyle(color: DoaColors.fg, fontSize: 13, fontWeight: FontWeight.w600);
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
-      children: const [
-        Text('아이디 찾기', style: style),
-        _Dot(),
-        Text('비밀번호 재설정', style: style),
-        _Dot(),
-        Text('회원가입', style: style),
+      children: [
+        GestureDetector(
+          onTap: () => Navigator.push(
+              context, MaterialPageRoute(builder: (_) => const FindEmailScreen())),
+          child: const Text('이메일 찾기', style: style),
+        ),
+        const _Dot(),
+        GestureDetector(
+          onTap: () => Navigator.push(
+              context, MaterialPageRoute(builder: (_) => const ForgotPasswordScreen())),
+          child: const Text('비밀번호 찾기', style: style),
+        ),
+        const _Dot(),
+        const Text('회원가입', style: style),
       ],
     );
   }

@@ -120,6 +120,23 @@ model ProductView {
   @@schema("users")
 }
 
+/// 비밀번호 재설정 OTP. 원문은 저장하지 않고 SHA-256 해시만 보관 (ADR-005).
+/// 1회 사용 후 consumedAt 기록, 10분 만료, 60초 재발송 제한은 서비스 레이어 책임.
+/// attempts: 잘못된 OTP 시도 횟수. OTP_MAX_ATTEMPTS(5) 도달 시 소비 처리(브루트포스 차단).
+model PasswordResetOtp {
+  id         String    @id @default(cuid())
+  email      String
+  otpHash    String
+  expiresAt  DateTime
+  consumedAt DateTime?
+  attempts   Int       @default(0)
+  createdAt  DateTime  @default(now())
+
+  @@index([email, createdAt(sort: Desc)])
+  @@map("password_reset_otps")
+  @@schema("users")
+}
+
 // ============================================================
 // products 스키마 — Stage 2 실체화 테이블
 // ============================================================
