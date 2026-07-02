@@ -12,23 +12,29 @@ import { AuthenticatedUser } from '../../shared/auth/jwt.strategy';
 import { CurrentUser } from '../../shared/auth/current-user.decorator';
 import { JwtAuthGuard } from '../../shared/auth/jwt-auth.guard';
 import { AuthService } from './auth.service';
+import { SocialAuthService } from './social-auth.service';
 import { LoginDto } from './dto/login.dto';
 import { RefreshDto } from './dto/refresh.dto';
 import { RegisterDto } from './dto/register.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { FindEmailDto } from './dto/find-email.dto';
+import { SocialLoginDto } from './dto/social-login.dto';
 import {
   AuthProfileResponse,
   FindEmailResponse,
   LoginResponse,
   RefreshResponse,
   RegisterResponse,
+  SocialLoginResponse,
 } from './dto/auth-response.dto';
 
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly authService: AuthService) {}
+  constructor(
+    private readonly authService: AuthService,
+    private readonly socialAuthService: SocialAuthService,
+  ) {}
 
   @Post('register')
   @ApiOkResponse({ type: RegisterResponse })
@@ -41,6 +47,14 @@ export class AuthController {
   @ApiOkResponse({ type: LoginResponse })
   async login(@Body() dto: LoginDto) {
     return this.authService.login(dto);
+  }
+
+  @Post('social-login')
+  @HttpCode(HttpStatus.OK)
+  @ApiOkResponse({ type: SocialLoginResponse })
+  async socialLogin(@Body() dto: SocialLoginDto) {
+    // JWT 가드 불필요 — 익명 엔드포인트 (plan.md PATCH-001/ADR-001)
+    return this.socialAuthService.login(dto.provider, dto.token);
   }
 
   @Post('refresh')

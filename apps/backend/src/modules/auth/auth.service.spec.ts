@@ -391,7 +391,7 @@ describe('AuthService', () => {
   describe('SC-015/016/020: forgotPassword (FR-011, NFR-003 관련)', () => {
     it('test_forgot_registered_returns_200 — 정상: createOtp + sendOtpEmail 호출', async () => {
       /**
-       * SC-015 Happy Path (단위 분기 검증):
+       * SC-015 Happy Path (단위 분기 검증) (v1.1.0/013 spec):
        * 등록된 이메일로 forgotPassword 호출 시
        * createOtp + mailer.sendOtpEmail 이 각각 1회 호출되고 void 반환(200).
        * rate-limit 없음: findLatestOtpByEmail = null (이전 OTP 없음).
@@ -413,7 +413,7 @@ describe('AuthService', () => {
 
     it('test_forgot_unregistered_returns_404 — 미가입 이메일 → NotFoundException', async () => {
       /**
-       * SC-016 Error Case:
+       * SC-016 Error Case (v1.1.0/013 spec):
        * 미가입 이메일로 forgotPassword → NotFoundException (HTTP 404).
        */
       mockAuthRepository.findUserByEmail.mockResolvedValue(null);
@@ -428,7 +428,7 @@ describe('AuthService', () => {
 
     it('test_forgot_twice_returns_429 — 1분 이내 재발송 → 429 TooManyRequests', async () => {
       /**
-       * SC-020 Error Case (NFR-003):
+       * SC-020 Error Case (NFR-003) (v1.1.0/013 spec):
        * 1분 이내 이전 OTP 존재 시 HttpException(429) 발생.
        * findLatestOtpByEmail.createdAt > now - OTP_RESEND_WINDOW_SEC(60).
        */
@@ -458,7 +458,7 @@ describe('AuthService', () => {
   describe('SC-017/018: resetPassword (FR-012, NFR-002 관련)', () => {
     it('test_reset_valid_otp_changes_password — 정상: 비밀번호 변경 + OTP consumed', async () => {
       /**
-       * SC-017 Happy Path:
+       * SC-017 Happy Path (v1.1.0/013 spec):
        * 유효한 OTP·이메일·새 비밀번호 → void 반환(200).
        * markOtpConsumed + revokeAllRefreshTokensByUser 호출.
        */
@@ -485,7 +485,7 @@ describe('AuthService', () => {
 
     it('when_no_otp_then_400 — OTP 없음 → BadRequestException', async () => {
       /**
-       * SC-018 Error (no OTP):
+       * SC-018 Error (no OTP) (v1.1.0/013 spec):
        * findLatestOtpByEmail = null → BadRequestException(400).
        */
       mockAuthRepository.findUserByEmail.mockResolvedValue(FIXED_USER);
@@ -498,7 +498,7 @@ describe('AuthService', () => {
 
     it('test_reset_expired_otp_rejected — 만료 OTP → BadRequestException', async () => {
       /**
-       * SC-018 Edge/Error Case (NFR-002):
+       * SC-018 Edge/Error Case (NFR-002) (v1.1.0/013 spec):
        * 발급 후 10분 경과 OTP(expiresAt 과거) → BadRequestException(400).
        */
       mockAuthRepository.findUserByEmail.mockResolvedValue(FIXED_USER);
@@ -515,7 +515,7 @@ describe('AuthService', () => {
 
     it('when_consumed_otp_then_400 — 이미 소비된 OTP → BadRequestException', async () => {
       /**
-       * SC-018 보조: consumedAt != null → 400 재사용 차단.
+       * SC-018 보조 (v1.1.0/013 spec): consumedAt != null → 400 재사용 차단.
        */
       mockAuthRepository.findUserByEmail.mockResolvedValue(FIXED_USER);
       mockAuthRepository.findLatestOtpByEmail.mockResolvedValue(
@@ -529,7 +529,7 @@ describe('AuthService', () => {
 
     it('when_otp_mismatch_then_400 — OTP 불일치 → BadRequestException', async () => {
       /**
-       * SC-018 보조: sha256(입력) !== otpHash → 400.
+       * SC-018 보조 (v1.1.0/013 spec): sha256(입력) !== otpHash → 400.
        * SEC-001: incrementOtpAttempts 호출, attempts < OTP_MAX_ATTEMPTS → markOtpConsumed 미호출.
        */
       mockAuthRepository.findUserByEmail.mockResolvedValue(FIXED_USER);
@@ -607,7 +607,7 @@ describe('AuthService', () => {
   describe('SC-022/023: findEmail (FR-015, NFR-004 관련)', () => {
     it('test_find_email_returns_masked — 등록 phone → 마스킹 이메일 반환', async () => {
       /**
-       * SC-022 Happy Path:
+       * SC-022 Happy Path (v1.1.0/013 spec):
        * 등록된 전화번호로 findEmail → { email: 'te**@example.com' } 형태 반환.
        */
       mockAuthRepository.findFirstUserByPhone.mockResolvedValue(FIXED_USER);
@@ -621,7 +621,7 @@ describe('AuthService', () => {
 
     it('test_find_email_unregistered_404 — 미등록 phone → NotFoundException', async () => {
       /**
-       * SC-023 Error Case:
+       * SC-023 Error Case (v1.1.0/013 spec):
        * 미등록 전화번호로 findEmail → NotFoundException (HTTP 404).
        */
       mockAuthRepository.findFirstUserByPhone.mockResolvedValue(null);
@@ -685,6 +685,39 @@ describe('AuthService', () => {
         // createRefreshToken 미호출인 경우 → signAsync 의 expiresIn 으로 검증
         expect(refreshTokenCall).toBeDefined();
       }
+    });
+  });
+
+  // ── SC-004 (FR-007, NFR-003): password=null 사용자 이메일 로그인 → 401 ─────
+  describe('SC-004 (v1.1.0/014 spec): password=null 사용자 이메일+비밀번호 로그인 거부', () => {
+    it('test_SC004_014_null_password_user_login_returns_401', async () => {
+      /**
+       * SC-004 (v1.1.0/014 spec): SC-003 경로로 생성된 신규 사용자의 password가
+       * null이며, 해당 계정으로 이메일+비밀번호 로그인 시도 시 오류가 반환된다.
+       *
+       * (PROC-R04) spec SC-004 원문: 오류 반환 → UnauthorizedException.
+       * null 가드: bcrypt.compare 에 null 전달하지 않음을 검증(NFR-003, ADR-005).
+       *
+       * PROC-003: findUserByEmail 이 password=null 사용자를 반환하는 경로를 재현.
+       * null 가드가 bcrypt.compare 를 통과시키지 않음을 확인.
+       */
+      const socialOnlyUser = {
+        ...FIXED_USER,
+        id: 'social-user-001',
+        email: 'social@example.com',
+        password: null as string | null,
+      };
+
+      mockAuthRepository.findUserByEmail.mockResolvedValue(socialOnlyUser);
+      // bcrypt.compare 는 null 가드 이전에 호출되어선 안 된다(NFR-003)
+      const bcryptSpy = jest.spyOn(bcrypt, 'compare');
+
+      await expect(
+        service.login({ email: 'social@example.com', password: 'anyPassword123!' }),
+      ).rejects.toThrow(UnauthorizedException);
+
+      // null 가드가 bcrypt.compare 이전에 작동해야 한다
+      expect(bcryptSpy).not.toHaveBeenCalled();
     });
   });
 });

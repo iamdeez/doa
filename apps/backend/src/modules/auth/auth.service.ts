@@ -96,11 +96,24 @@ export class AuthService {
       throw new UnauthorizedException('Invalid credentials');
     }
 
+    // ADR-005: 소셜 전용 사용자(password=null)는 이메일+비밀번호 로그인 불가
+    if (!user.password) {
+      throw new UnauthorizedException('Invalid credentials');
+    }
+
     const passwordMatch = await bcrypt.compare(input.password, user.password);
     if (!passwordMatch) {
       throw new UnauthorizedException('Invalid credentials');
     }
 
+    return this.issueTokensForUser(user);
+  }
+
+  /**
+   * 사용자 엔티티로부터 access/refresh 토큰 쌍을 발급하고 refresh 를 DB 에 저장한다.
+   * login() 과 SocialAuthService 가 공유하는 헬퍼 (ADR-006).
+   */
+  async issueTokensForUser(user: { id: string; email: string }): Promise<LoginResult> {
     const accessSecret = this.configService.get<string>('jwt.accessSecret');
     const refreshSecret = this.configService.get<string>('jwt.refreshSecret');
 

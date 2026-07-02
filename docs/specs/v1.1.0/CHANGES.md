@@ -1,3 +1,148 @@
+## [014-social-login] 구현 완료
+
+> v1.1.0 의 열네 번째 차수 — **소셜 로그인(최종: 카카오·구글 — Naver 는 SEC-001/GAP-014-10 근거로
+> 이번 릴리즈 완전 제외, 하단 "3차 복귀" 절 참조. 최초 설계·1차 구현 범위는 카카오·구글·네이버 3종)**:
+> (1) 백엔드 `POST /auth/social-login` 엔드포인트 —
+> 클라이언트가 SDK로 획득한 토큰을 제공자에 검증(`SocialProviderPort` — Kakao/Google 구현체, Naver 는
+> 미와이어 보존)하여
+> providerId·email·name 획득(FR-001~002), (2) 계정 해석 3단계 우선순위(providerId 매칭 재로그인 →
+> email 매칭 자동연동 → 신규가입, ADR-003, FR-004~007), (3) 소셜 전용 신규가입 사용자 password=null
+> (ADR-005, FR-007) + 기존 `login()` null 가드 추가(NFR-003), (4) JWT 발급 공유 helper
+> `AuthService.issueTokensForUser()` 추출(ADR-006, login·social-login 공유, 동작 불변, FR-008),
+> (5) `social_accounts` 테이블 신규(users 스키마, `@@unique([provider,providerId])`, FR-009,
+> Database Design Agent 활성 — GAP-014-01 tx-aware 원자성 안전망 설계),
+> (6) Flutter `LoginScreen` `_SocialRow` 플레이스홀더(009 이월)를 `GestureDetector` 콜백 구조로 전환 +
+> `SocialAuthService` 추상 인터페이스(`StubSocialAuthService` 기본값, 실 SDK 네이티브 연동은 운영 셋업
+> 단계 deferred — ASM-002) + 취소/실패 처리(FR-010~016).
+> base `58ee0d1` → working tree(미커밋). 변경 추적:
+> `git diff 58ee0d1 -- apps/backend mobile/customer_app` (tracked modified 10 files, +245/-36 — 3차 갱신,
+> Naver 완전 제외로 `auth.module.ts`·`login_screen.dart` 재실측).
+> 신규(untracked) 파일 15건(SEC-001 수정 회귀 테스트 `kakao.provider.spec.ts`·Naver 자동연동 비활성 회귀
+> 테스트 `social-auth.service.autolink-policy.spec.ts` 포함)은 git add 후 동 커밋에 포함.
+> **신규 npm/pub 의존 0건**(백엔드는 Node 20 native `fetch`, Flutter는 실 SDK 대신 stub 인터페이스로
+> 파이프라인 검증 — plan.md ASM-002/selection-phases.md PATCH-A15 확인).
+> **마이그레이션 있음**: `20260701064209_add_social_accounts` (additive — `social_accounts` 테이블 신규 +
+> `users.password` NOT NULL 해제, 기존 행 영향 없음).
+> 선택 단계: Database Design Agent 활성화(FR-009 스키마 확정, data-model.md 산출). Security Agent
+> 활성화 — **SEC-001**(High, Kakao/Naver provider 의 app/client 바인딩(audience) 검증 누락) 발견 →
+> Development Agent 복귀 수정: **Kakao 해소**(`access_token_info` 응답 `app_id` 를 신설 env
+> `KAKAO_APP_ID` 와 대조, 불일치·조회실패 시 `UnauthorizedException`) — **Naver 는 대응 공개 API
+> 부재로 best-effort 문서화만 적용**(로직 불변, 잔여 위험 GAP-014-08 로 분리).
+> **(2차 복귀) Naver 자동연동 비활성화 — 폐기된 중간 완화 단계로 보존**: Security Agent 재감사(v1.1)에서
+> Naver 심각도 **High 유지** 판정(문서화만으로는 실질 완화가 아님이라는 5개 근거로 하향 불가) → main
+> session이 사용자와 함께 security-report.md 권고 3종 중 **(a) "FR-005 자동연동을 Naver 에 한해
+> 비활성화"**를 채택. `SocialAuthService` 에 `AUTO_LINK_PROVIDERS`(kakao·google) 화이트리스트를 도입하여
+> provider가 이 목록에 없으면(naver) email 매칭 자동연동(path 3b)을 즉시 `ConflictException`(409)으로
+> 거부하도록 수정(path 3c의 P2002 race fallback도 동일 게이팅). 회귀 테스트 4건
+> (`social-auth.service.autolink-policy.spec.ts`, SC-XXX 비매핑) 추가, 백엔드 전체 307/307 PASS
+> (303→307, 회귀 0). **이 완화는 path 3b/3c 만을 대상으로 했고 path 3a(providerId 매칭 재로그인)는
+> 대상이 아니었다 — 이후 Security Agent 재감사 2차(v1.2)에서 이 공백이 신규 확정(GAP-014-10)되어
+> 아래 3차 복귀의 Naver 완전 제외로 대체되었다.**
+> **(3차 복귀, 본 갱신) Naver 이번 릴리즈 완전 제외 — 사용자 최종 결정**: Security Agent 재감사 2차(v1.2)가
+> path 3a(`social-auth.service.ts:56-60`, providerId 매칭 재로그인)는 `AUTO_LINK_PROVIDERS` 게이팅
+> 대상에 포함되지 않아, 앱 바인딩 검증 수단이 없는 Naver 에 한해 **이미 naver 로 연동된 기존 정규 DOA
+> 계정이 타 앱 발급 토큰 재전송으로 완전 탈취 가능**함을 신규 확정(**GAP-014-10**, `status: BLOCKED`
+> 유지)함에 따라, 사용자가 Security Agent 권고 (b) **"Naver 소셜 로그인을 이번 릴리즈에서 완전 제외"**를
+> 최종 채택했다. `SocialProviderResolver`(kakao·google 2개만 매핑)·`SocialLoginDto`(`@IsIn` 화이트리스트에서
+> naver 제거 — 컨트롤러 진입 전 400 거부)·`AuthModule`(`NaverProvider` DI 미와이어)·Flutter
+> `login_screen.dart`/`social_auth_service.dart`(네이버 버튼·`signInWithNaver` 제거)를 수정하여 naver 가
+> path 3a/3b/3c 어디에도 도달할 수 없도록 API 경계에서 원천 차단했다. `naver.provider.ts` 파일은 삭제하지
+> 않고 미와이어 상태로 보존(향후 authorization code + client_secret 교환 방식, ADR-001 재검토 시 재도입
+> 전제). 백엔드 전체 **306/306 PASS**(307→306, 5a 의 SC-009 제거 반영, 회귀 0), Flutter **7/7 PASS**
+> (8→7, 5a 의 SC-013 제거 반영). **GAP-014-08·GAP-014-10 모두 RESOLVED**(근본 원인 자체는 미해소이나
+> naver 가 활성 provider 가 아니므로 리스크로 작용하지 않음). **GAP-014-09(신규 확대, 미해결)** —
+> spec.md FR-001/NFR-004/SC-009/SC-013/SC-018/범위 외 절이 여전히 naver 를 지원 대상으로 서술하여
+> "이번 릴리즈 제외" 사실을 반영하지 못함(하단 "spec.md 문서 정확성 관찰" 참조, main session/Spec Agent
+> 결정 대기).
+
+**변경 파일**:
+
+백엔드 — 수정:
+- `apps/backend/.env.example` (+13): 소셜 로그인 크레덴셜 4종(`KAKAO_REST_API_KEY`·`GOOGLE_CLIENT_ID`·`NAVER_CLIENT_ID`·`NAVER_CLIENT_SECRET`, ADR-007) + `KAKAO_APP_ID`(SEC-001 수정, app_id 대조용, REST API 키와 별개 값) 주석 포함 추가
+- `apps/backend/prisma/schema.prisma` (+32/-12): `SocialAccount` 모델 신규(ADR-004) — `@@unique([provider, providerId])`·`@@index([userId])`; `User.password: String → String?`(ADR-005) + `socialAccounts` relation 추가
+- `apps/backend/src/modules/auth/auth.controller.ts` (+15/-1): `POST /auth/social-login` 라우트 추가(`SocialAuthService` DI 주입, 익명 엔드포인트)
+- `apps/backend/src/modules/auth/auth.module.ts` (+13/-1, **3차 갱신** — `NaverProvider` import·providers 엔트리 제거로 +14/-1→+13/-1): `SocialAuthService`·`SocialProviderResolver`·`KakaoProvider`·`GoogleProvider` providers 등록(Naver 이번 릴리즈 미와이어, SEC-001/GAP-014-08/GAP-014-10)
+- `apps/backend/src/modules/auth/auth.repository.ts` (+33/-3): `findByProviderAndProviderId`·`createSocialAccount`(tx-aware) 추가; `createUser` 시그니처 확장(password nullable·name)
+- `apps/backend/src/modules/auth/auth.service.ts` (+13): `login()` 에 `user.password === null` 가드 추가(NFR-003, ADR-005); `issueTokensForUser(user)` private→공유 helper 추출(ADR-006)
+- `apps/backend/src/modules/auth/auth.service.spec.ts` (+43/-10): SC-004(v1.1.0/014 spec) 신규 테스트 + null password 로그인 회귀 테스트 추가
+- `apps/backend/src/modules/auth/dto/auth-response.dto.ts` (+8): `SocialLoginResponse` DTO 추가
+- `mobile/customer_app/lib/core/providers.dart` (+21): `socialAuthServiceProvider`(기본값 `StubSocialAuthService`) + `AuthController.socialLogin(provider, token)` 메서드 추가
+- `mobile/customer_app/lib/features/auth/login_screen.dart` (+54/-9, **3차 갱신** — `_SocialRow` 네이버 `GestureDetector` 버튼·`onNaver` 파라미터 제거로 +62/-8→+54/-9): `_SocialRow` 플레이스홀더 `Container` → `GestureDetector` 콜백 구조 전환(SC-011~012, 카카오·구글 2버튼만), 취소(무오류 복귀)/실패(오류 메시지) 처리(SC-015~016)
+
+백엔드 — 신규:
+- `apps/backend/prisma/migrations/20260701064209_add_social_accounts/migration.sql` (신규): `social_accounts` 테이블 DDL + `users.password` NOT NULL 해제 DDL
+- `apps/backend/src/modules/auth/social/social-provider.port.ts` (신규): `abstract class SocialProviderPort` — `verify(token): Promise<SocialProfile>` 계약
+- `apps/backend/src/modules/auth/social/kakao.provider.ts` (신규, 71줄): KakaoProvider — `kapi.kakao.com/v2/user/me` Bearer 검증·파싱; **SEC-001(High) 수정** — `/v1/user/access_token_info` 응답의 `app_id` 를 `KAKAO_APP_ID` 와 대조 후 불일치·조회실패 시 `UnauthorizedException`(타 카카오 앱 발급 토큰 재사용 차단, google `aud` 검증과 동일 목적)
+- `apps/backend/src/modules/auth/social/kakao.provider.spec.ts` (신규, SEC-001 수정 회귀 테스트, SC-XXX 비매핑): app_id 일치·불일치·`access_token_info` 조회실패 3케이스 3/3 PASS
+- `apps/backend/src/modules/auth/social/google.provider.ts` (신규): GoogleProvider — `oauth2.googleapis.com/tokeninfo` 검증·`aud` 대조 (GAP-014-04 부팅크래시 수정 완료 — `getOrThrow` 를 생성자에서 `verify()` 내부로 이동)
+- `apps/backend/src/modules/auth/social/naver.provider.ts` (신규, 55줄, **3차 갱신** — docstring +53→+55): NaverProvider — `openapi.naver.com/v1/nid/me` Bearer 검증·파싱; **SEC-001/GAP-014-08/GAP-014-10** — 네이버는 app 바인딩 식별용 공개 API 부재로 코드 수정 불가. **(3차 갱신)** docstring을 "이번 릴리즈 미활성(SEC-001/GAP-014-08/GAP-014-10)"으로 전면 갱신(제외 사유·재도입 전제(ADR-001) 명시) — 파일은 삭제하지 않되 `SocialProviderResolver`·`AuthModule` 어디에도 와이어링하지 않음(로직 자체는 무변경)
+- `apps/backend/src/modules/auth/social/social-provider.resolver.ts` (신규, 35줄, **3차 갱신** — `NaverProvider` import·생성자 주입·providers 맵 엔트리 제거로 +31→+35): provider 문자열 → Port 구현체 매핑(kakao·google 2개만), naver 요청은 매핑 자체가 없어 `UnauthorizedException`(단, 실제로는 DTO 검증이 먼저 400으로 거부)
+- `apps/backend/src/modules/auth/social/stub-social.provider.ts` (신규): 테스트용 stub(무네트워크, NFR-004 mock)
+- `apps/backend/src/modules/auth/social-auth.service.ts` (신규, 141줄, **3차 갱신** — 상단·인라인 주석을 "Naver 는 API 경계에서 완전 제외되어 login() 자체가 호출될 수 없다"로 갱신, +136→+141): 계정 해석 3단계 우선순위 오케스트레이션(ADR-003). `AUTO_LINK_PROVIDERS: ReadonlySet<string> = new Set(['kakao','google'])` 화이트리스트(2차 갱신 도입, 상수 자체는 3차 갱신에서 무변경) — provider가 목록에 없으면(naver) path 3b(email 매칭 자동연동)·path 3c의 P2002 race fallback 모두 `ConflictException`(409) 거부. 3차 갱신으로 naver 는 API 경계(DTO)에서 이미 차단되어 이 서비스에 naver 문자열이 도달할 수 없음
+- `apps/backend/src/modules/auth/social-auth.service.spec.ts` (신규, **3차 갱신** — 5a 가 SC-009 naver 단위 테스트·`NAVER_PROFILE` fixture 제거로 +340→+313): SC-001~003·005~008·010 단위 테스트 (T-D1, SC-009 제거로 범위 외 처리)
+- `apps/backend/src/modules/auth/social-auth.service.autolink-policy.spec.ts` (신규, 147줄, **3차 갱신** — docstring 갱신(naver 가 API 경계에서 완전 제외되어 이 서비스 도달 불가능함을 명시, assertion 무변경), +144→+147, SC-XXX 비매핑 보안 회귀 테스트): naver+기존이메일→Conflict(자동연동·신규생성 모두 미호출)·naver+신규이메일→독립계정 정상생성(path 3c 회귀없음)·`it.each(['kakao','google'])`+기존이메일→자동연동 유지(회귀없음) 4케이스
+- `apps/backend/src/modules/auth/dto/social-login.dto.ts` (신규, 16줄, **3차 갱신** — `SUPPORTED_PROVIDERS`에서 `'naver'` 제거 + 제외 사유 주석 추가로 +14→+16): `SocialLoginDto`(`provider`·`token`) class-validator — `@IsIn(['kakao','google'])`로 naver 요청을 컨트롤러 진입 전 400으로 거부(가장 이른 차단점)
+
+Flutter — 신규:
+- `mobile/customer_app/lib/features/auth/social_auth_service.dart` (신규, 41줄, **3차 갱신** — `signInWithNaver()` 제거, 라인수 불변): `abstract class SocialAuthService`(`signInWithKakao`·`signInWithGoogle` 2개만) + `StubSocialAuthService`(개발/테스트 기본값) + `SocialCredential`·`SocialAuthCancelled`
+- `mobile/customer_app/test/features/social_login_static_test.dart` (신규, **3차 갱신** — 5a 가 SC-013 naver 버튼 테스트·SC-018 naver 크레덴셜 단언 제거로 +162→+138): SC-011~012·017~018(부분) 정적 검증 (T-D3, SC-013 제거로 범위 외 처리)
+- `mobile/customer_app/test/features/social_login_flow_test.dart` (신규, **3차 갱신** — 5a 가 `_StubSocialAuthService.signInWithNaver()` override 제거로 +283→+275): SC-014~016 흐름 테스트 (T-D4)
+
+DB 설계 산출물(참조 문서, 코드 아님):
+- `docs/specs/v1.1.0/014-social-login/db-design/data-model.md` (신규): `social_accounts` 테이블 정의·ERD·마이그레이션·롤백 전략 (Database Design Agent)
+
+**검증**:
+- 백엔드 전체 회귀(SEC-001 Kakao 수정 후 재검증): 303/303 PASS(29 suites, 기존 300 + `kakao.provider.spec.ts` 신규 3건, 회귀 0)
+- 백엔드 전체 회귀(Naver 자동연동 비활성 후 재검증, v1.2 — 폐기된 중간 단계): 307/307 PASS(30 suites, 303 + `social-auth.service.autolink-policy.spec.ts` 신규 4건, 회귀 0)
+- **(3차 갱신) 백엔드 전체 회귀(Naver 이번 릴리즈 완전 제외 후 최종 재검증)**: **306/306 PASS**(30 suites, 307 → 5a 의 SC-009 naver 단위 테스트 제거 반영, 회귀 0). `pnpm exec tsc --noEmit`/`nest build` 0 error.
+- 백엔드 `health.e2e-spec.ts`(AppModule 전체 부팅): 3/3 PASS (GAP-014-04 수정 확인 — 크레덴셜 미설정 상태에서도 정상 기동; SEC-001 Kakao 수정 후 재검증 — `KAKAO_APP_ID` 미설정 상태에서도 정상 기동 확인, lazy lookup; **Naver 완전 제외 후 재검증에서도 3/3 PASS 유지 — `NaverProvider` DI 미와이어 상태에서도 `AuthModule` 정상 기동**)
+- **(3차 갱신) Flutter**: `flutter test test/features/social_login_static_test.dart test/features/social_login_flow_test.dart` — **7/7 PASS**(8→7, 5a 의 SC-013 naver 버튼 테스트 제거 반영), `flutter analyze lib/` 0 issues(네이버 버튼 제거 후 재확인)
+- 백엔드 SC 매핑 테스트: `social-auth.service.spec.ts`+`auth.service.spec.ts` 합계 **34/34 PASS**(35→34, SC-009 제거)
+- 총 **41/41 SC 매핑 테스트 PASS**(backend 34 + Flutter 7, Naver 완전 제외 후 회귀 0 — SC-002 는 kakao 고정이라 정책 변경과 무관함을 코드 대조로 확인)
+- **SC-009(FR-001/002, naver 검증 흐름)·SC-013(FR-012, 네이버 버튼)은 OUT_OF_SCOPE 로 재분류**(테스트가 실패한 것이 아니라 5a 가 의도적으로 제거 — production 이 naver 를 API 경계(DTO `@IsIn`)에서부터 거부하여 이 시나리오 자체가 도달 불가능한 경로가 됨). **SC-018(NFR-004, 크레덴셜 존재)은 카카오·구글 부분만 PASS**(naver 크레덴셜 단언 제거, `.env.example`의 `NAVER_CLIENT_ID`/`SECRET` 값 자체는 미제거 상태로 존치)
+- SC-001~008·010~012·014~017 전수 PASS(kakao·google 전용 또는 provider 무관 경로, 회귀 0). SC-019(NFR-001, P95 3초, 실 OAuth 필요) → deferred(`[env:e2e-docker]`, Deploy Agent 위임, spec.md 명시)
+- `User.password`·`createUserWithSocialAccount` Breaking change 잔여 참조 grep 확인: 0건
+- `grep -rniI naver apps/backend/src mobile/customer_app/lib` 잔여 33건 — 전부 (a) 제외 사유·재도입 전제를 명시한 설명 주석/docstring, (b) `naver.provider.ts` 자체 내부 코드(미와이어이므로 실행 경로 도달 불가), (c) `social-auth.service.autolink-policy.spec.ts`(방어적 심층방어 회귀 테스트)뿐 — **실행 경로상 도달 가능한 production 잔여 참조 0건**
+- `social-auth.service.autolink-policy.spec.ts`(SC-XXX 비매핑 보안 회귀 테스트) 4/4 PASS — 상세는 `test/coverage.md` §SEC-001 최종 재검증 (Naver 완전 제외) 참조
+
+**해결된 GAP**:
+- **GAP-014-02 해소**: D-layer 테스트 결함 4건(5a `ProviderScopeWidget` 비공개 타입·`social_login_static_test.dart` cwd 경로 가정 오류·Key 부재로 인한 영구 skip anti-pattern·`FlutterSecureStorage` 플랫폼 채널 무응답 hang) — Test Agent(EXECUTION) 5b 단계에서 전량 정정. production 코드 변경 없음.
+- **GAP-014-03 해소**: tasks.md `createUserWithSocialAccount` 명세와 5a 테스트 mock 계약(`createUser`+`createSocialAccount` 개별) 불일치 — Development Agent 가 개별 호출 방식으로 구현 정렬, dead code 제거.
+- **GAP-014-04 해소**: `GoogleProvider` 생성자의 `getOrThrow('GOOGLE_CLIENT_ID')` 가 크레덴셜 미설정 시 `AuthModule` DI 인스턴스화 자체를 실패시켜 앱 전체 부팅 불가 — `verify()` 메서드 내부로 이동하여 수정. `health.e2e-spec.ts` 로 검출(단위 테스트는 전량 mock으로 미검출).
+- **GAP-014-07 부분 해소 (Kakao)**: Security Agent 발견 SEC-001(High, Kakao/Naver provider 의 app/client 바인딩(audience) 검증 누락 — 타 앱 발급 토큰 재전송 시 자동연동(FR-005) 경로와 결합해 계정 탈취 가능) — Kakao 는 `KakaoProvider.verify()` 앞단에 `access_token_info` 조회·`app_id` 대조를 추가하여 해소(회귀 테스트 3건, `kakao.provider.spec.ts`, 303/303 회귀 0). Naver 는 대응 공개 API 부재로 코드 수정 불가 → 잔여 위험을 GAP-014-08 로 분리(아래 3차 완전 해소 참조).
+- **GAP-014-08 완전 해소 (3차 갱신) — Naver 이번 릴리즈 완전 제외**: v1.1 재감사에서 Naver 자동연동 비활성화(v1.2)만으로는 근본 원인이 미해소였고, 이후 v1.2 재감사 2차가 path 3a(재로그인) 잔존 위험을 GAP-014-10 으로 신규 확정함에 따라, 사용자가 "Naver 소셜 로그인을 이번 릴리즈에서 완전 제외" (Security Agent 권고 (b))를 최종 채택했다. `SocialProviderResolver`·`SocialLoginDto`·`AuthModule`·Flutter 양쪽에서 naver 를 완전 제거하여 근본 원인(앱 바인딩 검증 수단 부재) 자체는 사실로 남으나 naver 가 활성 provider 가 아니므로 리스크로 작용하지 않게 되었다. **상태: RESOLVED by Development Agent** (Test Agent EXECUTION 5b 독립 재검증 동의).
+- **GAP-014-10 완전 해소 (3차 갱신) — path 3a 노출 경로 자체 소거**: Security Agent 재감사 2차(v1.2)가 신규 확정한 path 3a(providerId 매칭 재로그인) 잔존 위험 — `naver` provider 문자열이 API 경계(DTO `@IsIn(['kakao','google'])`)에서 400 으로 거부되어 `social-auth.service.ts:56-60`(path 3a) 자체에 도달할 수 없게 되어 완전히 소거되었다. path 3a 로직 자체는 무변경(diff 0). **상태: RESOLVED by Development Agent** (Test Agent EXECUTION 5b 독립 재검증 동의).
+
+**미해결 GAP** (Retrospective Agent 위임 / 일부 main session·Spec Agent 결정 대기):
+- **GAP-014-01 (OPEN)**: `createUser`+`createSocialAccount` 트랜잭션 원자성의 실경로(실 PrismaService·실 DB) 검증 불가 — 단위 테스트는 `AuthRepository` 전체 mock. 안전망: `users.email @unique`+`social_accounts @@unique([provider,providerId])`+P2002 catch 재해석 폴백. 후속: 사후 운영 검증·Security Agent 감사·필요 시 testcontainers 통합 테스트.
+- **GAP-014-05 (신규, 문서-갱신-필요)**: context.md §2·§4 갱신 필요(`SocialAuthService`·`SocialProviderPort`(kakao/google/stub 구현체 — **naver 는 미와이어**)·`social_accounts` 테이블·`User.password` nullable 반영) — 상세는 `docs/specs/v1.1.0/014-social-login/gaps.md` 참조.
+- **GAP-014-06 (신규, 문서-갱신-필요)**: infra.md §7·§8 갱신 필요(OAuth 아웃바운드 제공자 **2종(카카오·구글, naver 제외)**·크레덴셜 env(`KAKAO_APP_ID` 포함) 배포 체크리스트·자동연동 이메일 신뢰 모델 운영 주의사항) — 상세는 `docs/specs/v1.1.0/014-social-login/gaps.md` 참조.
+- **GAP-014-09 (미해결, 3차 갱신 — 범위 확대)**: 애초 "FR-005 자동연동만 provider 단위 예외" 수준의 간극이었으나, Naver 완전 제외 결정으로 spec.md `FR-001`("카카오·구글·네이버 중 하나")·`NFR-004`("각 OAuth 제공자(카카오·구글·네이버)")·`SC-009`("`provider: 'naver'`... JWT가 반환된다")·`SC-013`("네이버 소셜 버튼")·`SC-018`(카카오·구글·네이버 크레덴셜)·범위 외 절("실 OAuth 제공자 앱 등록(카카오·구글·네이버)") 전부가 naver 를 지원 대상으로 서술하는 **provider 지원 목록 자체의 정합성 간극**으로 확대되었다. 구현은 naver 를 API 경계(DTO `@IsIn`)에서부터 완전히 거부하며, 5a Test Agent 는 이미 SC-009·SC-013 매핑 테스트를 제거·SC-018 검증 범위를 축소했으나(test-cases.md v1.1) spec.md 원문 자체는 미갱신 상태다. main session/Spec Agent가 spec.md 전면 검토를 결정해야 한다 — 상세는 `docs/specs/v1.1.0/014-social-login/gaps.md` GAP-014-09 참조.
+
+**spec.md 문서 정확성 관찰 (Docs Agent 직접 수정 불가 — 참고용)**:
+- spec.md NFR-001 이 "Constitution P-007 API 일반 기준(P95 1초)" 을 언급하나, `.claude/docs/constitution.md` 직접 확인 결과 **P-007은 "스펙 범위 원칙"**이며 constitution에는 성능(P95) 조항이 존재하지 않는다(Planning Agent가 plan.md Constitution Gates 절에서 최초 관찰·기록). 실질 영향은 없다 — NFR-001(P95 3초)은 constitution 기준 완화가 아닌 spec 자체 독립 기준으로 적용되었고 Constitution Gates 판정에도 영향이 없었다. spec.md는 1단계 Spec Agent 산출물이므로 Docs Agent가 직접 수정하지 않는다(agent-rules.md §3.1). 정정이 필요하면 사용자 승인 하 별도 patch 로 spec.md의 조항 번호 참조만 제거·정정 권고.
+- **(3차 갱신, GAP-014-09 최종 범위) spec.md 는 여전히 Naver 를 지원 대상 provider 로 서술하나, 구현은 Naver 를 이번 릴리즈에서 완전히 제외했다**: 사용자가 Security Agent 권고 (b)를 최종 채택하여 `SocialProviderResolver`·`SocialLoginDto`·`AuthModule`·Flutter `login_screen.dart`/`social_auth_service.dart` 에서 naver 를 API 경계부터 완전히 거부하도록 수정했다(GAP-014-08/GAP-014-10 완전 해소, 위 "해결된 GAP" 참조). 그러나 spec.md 원문은 아래 5개 지점에서 여전히 naver 를 지원 대상으로 명시하고 있어 **구현-문서 불일치**가 존재한다:
+  - **FR-001**: "소셜 제공자 식별자(카카오·구글·네이버 중 하나)" — naver 는 구현상 `@IsIn` 화이트리스트에서 제외되어 요청 자체가 400 으로 거부된다.
+  - **NFR-004**: "각 OAuth 제공자(카카오·구글·네이버)의 인증 크레덴셜은 환경변수로 관리" — naver 크레덴셜(`NAVER_CLIENT_ID`/`NAVER_CLIENT_SECRET`)은 `.env.example`에 여전히 존재하나 코드에서 실제로 읽어 사용하는 provider 는 kakao·google 뿐이다.
+  - **SC-009**: "`provider: 'naver'` 식별자로 소셜 로그인 요청 시 네이버 검증 흐름이 수행되고 JWT가 반환된다" — 5a 가 이 시나리오의 단위 테스트를 제거했다(production 에서 도달 불가능한 경로가 됨, `coverage.md` OUT_OF_SCOPE 재분류).
+  - **SC-013**: "`LoginScreen` 네이버 소셜 버튼이 탭 가능하며 탭 핸들러가 존재한다" — `login_screen.dart`의 `_SocialRow`에서 네이버 버튼 자체가 제거되어 검증 대상이 production 에 더 이상 존재하지 않는다.
+  - **SC-018**: "카카오·구글·네이버 각 제공자의 인증 크레덴셜 환경변수 항목이 `.env.example`에 존재한다" — `.env.example`의 naver 항목 존재 자체는 여전히 참(코드 검증 결과는 미변경)이나, 검증 범위가 활성 provider(kakao·google)로 사실상 축소되었다.
+  - **범위 외 절**: "실 OAuth 제공자 앱 등록(카카오·구글·네이버)" — naver 앱 등록 자체가 이번 릴리즈에서 무의미해졌다.
+  spec.md는 Spec Agent 산출물이므로 Docs Agent가 직접 수정하지 않으며, 위 NFR-001/P-007 관찰과 동일한 방식으로 참고용 관찰 사실만 기록한다(GAP-014-09). 정정이 필요하면 사용자 승인 하 별도 patch로 (1) FR-001/NFR-004 를 "카카오·구글(Naver는 SEC-001/GAP-014-08/GAP-014-10 근거로 이번 릴리즈 제외)"로 갱신, (2) SC-009/SC-013 을 수용 기준 목록에서 제거 또는 "제외(범위 외)"로 이관, (3) SC-018 크레덴셜 항목의 NAVER_* 존치 여부 결정, (4) 범위 외 절에 naver 완전 제외 사실을 추가하는 것을 권고한다.
+
+**후속 작업 시 주의사항**:
+- **OAuth 크레덴셜(카카오·구글) + KAKAO_APP_ID Fly secret 필수(운영 셋업 단계)**: `KAKAO_REST_API_KEY`·`GOOGLE_CLIENT_ID`·`KAKAO_APP_ID`(SEC-001 수정, 카카오 개발자콘솔 앱키 하단 "앱 ID" — REST API 키와 별개 값) 실 값 발급·설정 전까지는 stub provider 로만 동작(파이프라인 검증 완료 상태). `NAVER_CLIENT_ID`/`NAVER_CLIENT_SECRET` 은 `.env.example`에 존치되어 있으나 **naver 는 이번 릴리즈 미와이어이므로 발급이 불필요**(GAP-014-08/GAP-014-10 완전 해소). `KAKAO_APP_ID` 미설정 시 앱 기동은 정상이나(lazy lookup) 카카오 로그인 자체는 401 로 실패한다. 실 크레덴셜 발급 후 spec.md PROC-014 "사후 운영 검증" 시나리오 수동 점검 필요(naver 항목 제외).
+- **Flutter 실 SDK 네이티브 연동 미완료**: `SocialAuthService` 는 현재 `StubSocialAuthService` 만 구현되어 있다(`signInWithKakao`/`signInWithGoogle` 2개만, `signInWithNaver` 없음). 카카오/구글 실 SDK(`kakao_flutter_sdk_user`/`google_sign_in` 등, 정확한 패키지명 미확정)·Info.plist·AndroidManifest·deep link 설정은 운영 셋업 단계 deferred(ASM-002). `socialAuthServiceProvider` 를 실 구현체로 교체하는 후속 작업 필요.
+- **GAP-014-01 잔존 — 신규 소셜 가입 경로 비원자성**: `createUser`+`createSocialAccount` 개별 호출(GAP-014-03 해소 결과). `createUser` 성공 후 `createSocialAccount` 실패 시 orphan user 가능(P2002 catch 폴백이 1차 안전망). 운영 모니터링 및 Security Agent 감사 대상.
+- **자동 연동(FR-005) 이메일 신뢰 모델 — 계정 탈취 표면(SEC-001, Kakao 해소·Naver 완전 제외로 근본 해소)**: 제공자가 반환하는 이메일의 소유권 검증을 OAuth 제공자에 위임(ASM-001/NFR-002). Security Agent 감사로 Kakao/Naver 에 google `aud` 대응 검증이 결여됨을 발견(SEC-001, High) — **Kakao 는 `access_token_info` app_id 대조로 해소**, **Naver 는 자동연동 비활성화(v1.2)로도 path 3a 잔존 위험이 남아(GAP-014-10) 최종적으로 이번 릴리즈 완전 제외로 근본 해소**(GAP-014-08/GAP-014-10 모두 RESOLVED).
+- **`naver.provider.ts` 재도입 시 전제 조건**: 파일은 삭제하지 않고 미와이어 상태로 보존했다(구현 골격 재사용 목적). 향후 재도입 시 authorization code + client_secret 교환 방식(ADR-001 재검토)을 전제 조건으로 채택해야 한다 — client-token 검증 방식(현 ADR-001)으로는 app/client 바인딩 검증이 원천적으로 불가능함이 두 차례 Security Agent 재감사로 확정되었다.
+- **GAP-014-09 (미해결, 범위 확대) — spec.md provider 지원 목록 자체가 구현과 불일치**: spec.md FR-001/NFR-004/SC-009/SC-013/SC-018/범위 외 절이 여전히 naver 를 지원 대상으로 서술한다(위 "spec.md 문서 정확성 관찰" 참조). Docs Agent는 spec.md를 직접 수정하지 않는다(agent-rules.md §3.1, Spec Agent 산출물 단일 책임) — Retrospective Agent가 본 관찰을 근거로 spec.md 패치 권고안을 도출하고, main session이 사용자 승인을 거쳐 Spec Agent 재호출 여부를 결정하는 경로를 권고한다. 갱신 전까지 spec.md 는 provider 지원 범위에 대해 구현과 어긋난 SoT 임을 인지할 것.
+- **소셜 전용 사용자(password=null) + OTP 재설정 상호작용 미변경**: 013 OTP 비밀번호 재설정 흐름을 소셜 전용 사용자에게도 그대로 허용(ASM-003, 의도된 현행 유지) — 소셜 전용 사용자가 email OTP 로 password 를 신규 설정 가능. 후속 spec 검토 대상.
+- **GAP-014-05/06/09 미해결**: GAP-014-05(context.md 갱신, naver 미와이어 반영)·GAP-014-06(infra.md 갱신, OAuth 아웃바운드 제공자 2종(kakao·google)·`KAKAO_APP_ID` 체크리스트 반영)은 Retrospective Agent 위임. GAP-014-09(spec.md provider 지원 목록 정합성)는 main session/Spec Agent 결정 대기 — 상세 gaps.md 참조.
+- **spec.md NFR-001 조항 번호 오참조**: 위 "spec.md 문서 정확성 관찰" 참조. 무해하나 향후 유사 조항 인용 시 constitution.md 원문 재확인 권장.
+
+---
+
 ## [013-flutter-customer-phase2] 구현 완료
 
 > v1.1.0 의 열세 번째 차수 — **Flutter 소비자 앱 Phase 2**: 009 Phase 1에서 이월한 기능들을 구현.

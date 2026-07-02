@@ -118,6 +118,8 @@ Flutter: 기존 스토어 배포 파이프라인 유지 (수동)
 | Cloudflare R2 | S3 SDK 기본 재시도 (3회) | 파일 업로드 실패 시 오류 반환 |
 | pg-boss 잡 | pg-boss 내장 재시도 (잡별 설정) | 잡 실패 시 지수 백오프 재시도 |
 | PG사 결제 API | 멱등성 키 기반 수동 재시도 | 결제 API 호출 측에서 멱등성 키로 중복 방지 |
+| 카카오 API (kapi.kakao.com) | native fetch, 재시도 없음 | 소셜 로그인 토큰 검증 실패 시 4xx/5xx 반환 (POST /auth/social-login) |
+| 구글 tokeninfo (oauth2.googleapis.com) | native fetch, 재시도 없음 | 소셜 로그인 토큰 검증 실패 시 4xx/5xx 반환 |
 
 ---
 
@@ -187,6 +189,7 @@ pnpm --filter backend test:e2e
 - [ ] `ADMIN_USER_IDS` Fly secret 설정 확인 (seller 승인/거부 권한. **fail-closed** — 미설정 시 모든 승인 차단)
 - [ ] `CORS_ORIGIN` Fly secret 설정 확인 (콤마구분 허용 origin 화이트리스트. **fail-open** — 미설정 시 전체 허용. 운영에서는 콘솔·모바일 origin 만 명시 필수)
 - [ ] SMTP Fly secret 설정 확인 (`SMTP_HOST`·`SMTP_PORT`·`SMTP_USER`·`SMTP_PASS`·`MAIL_FROM`). 미설정 시 비밀번호 재설정 OTP 이메일 발송 불가. `NODE_ENV=production` 에서 `SmtpMailer` 활성 (013-flutter-customer-phase2)
+- [ ] OAuth 소셜 로그인 크레덴셜 Fly secret 설정 확인 (`KAKAO_APP_ID`·`KAKAO_REST_API_KEY`·`GOOGLE_CLIENT_ID`). 미설정 시 verify() 호출 시점 500(fail-closed, 앱 기동 무영향). 활성 provider: 카카오·구글 2종 (네이버 제외 — SEC-001) (014-social-login)
 
 ---
 
@@ -206,3 +209,4 @@ pnpm --filter backend test:e2e
 | deferred 성능 SC 사후 점검 (PROC-03) | SC-045/046(주문/결제 P95 integration)은 TEST_JWT_TOKEN·운영 시드 부재로 파이프라인 내 deferred. **운영 시드 구성 후 P95 측정** 필요(아래 §4 모니터링 연계) | 운영 | 003-commerce coverage-gap |
 | SMTP 이메일 발송 의존성 | 비밀번호 재설정 OTP 발송은 SMTP provider(nodemailer) 필요. `SMTP_*` secret 미설정 시 발송 실패(서비스는 500 미전파 — OTP DB 선기록으로 격리). 운영 SMTP provider 선정·secret 주입 필수 | `auth` 모듈·운영 | 013-flutter-customer-phase2 |
 | OTP 운영 임계값 | 비밀번호 재설정 OTP: 유효기간 `OTP_TTL_MIN=10`분·재발송 간격 `OTP_RESEND_WINDOW_SEC=60`초·최대 시도 `OTP_MAX_ATTEMPTS=5`회(초과 시 소비 처리·브루트포스 차단, SEC-001). `auth.constants.ts` 정의. 신규 마이그레이션 2종(`20260701022235_add_password_reset_otps`·`20260701140100_add_otp_attempts`)은 `prisma migrate deploy` 자동 적용 | `auth` 모듈 | 013-flutter-customer-phase2 |
+| 소셜 로그인 아웃바운드 의존성 | POST /auth/social-login 은 요청마다 kapi.kakao.com·oauth2.googleapis.com 로 아웃바운드 HTTP 호출(토큰 검증). 익명 엔드포인트·rate limit 부재(SEC-004, Low) → 무효 토큰 대량 전송 시 아웃바운드 증폭. 완화: @nestjs/throttler 검토(별도 과제). 활성 provider 카카오·구글(네이버 제외 — SEC-001). 마이그레이션 `20260701064209_add_social_accounts` | `auth` 모듈·운영 | 014-social-login |

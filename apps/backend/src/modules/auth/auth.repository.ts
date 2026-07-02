@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { PasswordResetOtp, RefreshToken, User } from '@prisma/client';
+import { PasswordResetOtp, RefreshToken, SocialAccount, User } from '@prisma/client';
 import { PrismaService } from '../../shared/prisma/prisma.service';
 
 // P-001: users 스키마(users.users, users.refresh_tokens, users.password_reset_otps)에만 접근. 타 스키마 미접근.
@@ -16,8 +16,13 @@ export class AuthRepository {
     return this.prisma.user.findUnique({ where: { id } });
   }
 
-  async createUser(data: { email: string; password: string }): Promise<User> {
-    return this.prisma.user.create({ data });
+  async createUser(data: {
+    email: string;
+    password?: string | null;
+    name?: string | null;
+  }): Promise<User> {
+    // tx-aware: runInTransaction 콜백 내에서 호출 시 tx 클라이언트, 아닐 시 root 사용
+    return this.prisma.tx.user.create({ data });
   }
 
   async updateUserPassword(userId: string, hashedPassword: string): Promise<void> {
@@ -51,6 +56,31 @@ export class AuthRepository {
       where: { userId, revoked: false },
       data: { revoked: true },
     });
+  }
+
+  // ──────────────────────────────────────────────
+  // 소셜 계정 연동 메서드
+  // ──────────────────────────────────────────────
+
+  async findByProviderAndProviderId(
+    provider: string,
+    providerId: string,
+  ): Promise<(SocialAccount & { user: User }) | null> {
+    return this.prisma.socialAccount.findUnique({
+      where: { provider_providerId: { provider, providerId } },
+      include: { user: true },
+    });
+  }
+
+  async createSocialAccount(data: {
+    userId: string;
+    provider: string;
+    providerId: string;
+    email: string;
+    name?: string | null;
+  }): Promise<SocialAccount> {
+    // tx-aware: runInTransaction 콜백 내 atomic createUser+createSocialAccount 지원
+    return this.prisma.tx.socialAccount.create({ data });
   }
 
   // ──────────────────────────────────────────────

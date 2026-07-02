@@ -18,7 +18,7 @@
 - **주요 기술 스택**: Node.js + TypeScript, NestJS, Prisma, PostgreSQL 16, Turborepo
 
 > 001~007 완료. `apps/backend`(NestJS **18모듈 전부 실구현** — auth·user·seller·product·inventory·cart·order·payment·coupon·review·shipping·settlement·search·notification·file·banner·stats·admin),
-> Prisma **31테이블**·JWT·AdminGuard·ALS 트랜잭션·pg-boss·쿠폰(서버할인·이중사용방지)·리뷰(orderItem)·배송(송장·추적·상태전이)·정산(Decimal 집계·멱등)·검색·알림(이벤트 연동)·파일(R2 Port+stub)·배너·통계·운영(감사 로그)·Docker·CI 실재.
+> Prisma **32테이블**·JWT·AdminGuard·소셜로그인(카카오·구글)·ALS 트랜잭션·pg-boss·쿠폰(서버할인·이중사용방지)·리뷰(orderItem)·배송(송장·추적·상태전이)·정산(Decimal 집계·멱등)·검색·알림(이벤트 연동)·파일(R2 Port+stub)·배너·통계·운영(감사 로그)·Docker·CI 실재.
 > 단위/통합 테스트: unit 255 PASS(25 suites) + e2e/static 84 PASS(16 suites). (005~007 경량 구현 후 정식 검증·문서화 + 008~013 후속 보강 완료.)
 > **후속 보강 완료**: 008 정산 멱등성(SEC-FIND-005-01), 009 알림 이벤트 연동(GAP-006-01), 010 쿠폰 할인값 검증(SEC-001), 011 파일 보안(SEC-FIND-006-01/02·GAP-006-02), 012 정산 completedAt(GAP-005-02), 013 관리자 감사 로그(GAP-007-01) 전부 해결. **추적 백로그 전부 소진**(잔여 SEC/GAP 0, GAP-005-03만 accepted).
 > **잔여 알려진 제약**: 마이그레이션 드리프트(GAP-005-03, accepted) — §6. 그 외 신규 발견 시 각 spec gaps.md·§6 에 추적.
@@ -72,7 +72,7 @@ Events (발행/구독 — NestJS EventEmitter)
 
 | 모듈 | 담당 스키마 | 역할 |
 |---|---|---|
-| `auth` | `users` | 로그인/JWT/Refresh/비밀번호 재설정 OTP(POST /auth/forgot-password·/auth/reset-password)·이메일 찾기(POST /auth/find-email, 마스킹 반환)/세션 |
+| `auth` | `users` | 로그인/JWT/Refresh/비밀번호 재설정 OTP(POST /auth/forgot-password·/auth/reset-password)·이메일 찾기(POST /auth/find-email, 마스킹 반환)/세션 · 소셜 로그인(POST /auth/social-login — 카카오·구글, SocialAuthService 계정해석 3단계: providerId 매칭 재로그인→email 매칭 자동연동→신규가입) |
 | `user` | `users` | 프로필/배송지/찜(wishlist)/최근 본 상품/등급 |
 | `seller` | `users` | 판매자 등록·심사·판매자 정보 |
 | `product` | `products` | 상품/카테고리/옵션/이미지 |
@@ -104,6 +104,7 @@ Events (발행/구독 — NestJS EventEmitter)
 | `shared/config` | `src/shared/config/` | jwt.config (Access 15분 / Refresh 30일 상수) |
 | `shared/prisma` | `src/shared/prisma/` | PrismaService · PrismaModule (DB 연결) |
 | `MailerPort` | `src/infrastructure/mail/` | 이메일 발송 어댑터. abstract `MailerPort` + `SmtpMailer`(nodemailer, `NODE_ENV=production`)·`StubMailer`(무네트워크 테스트). auth 비밀번호 재설정 OTP 발송 DI 주입 |
+| `social/` (auth 내부) | `src/modules/auth/social/` | `SocialProviderPort` 추상 + `KakaoProvider`(access_token_info app_id 대조)·`GoogleProvider`(tokeninfo aud+email_verified)·`StubSocialProvider`. `SocialProviderResolver` 가 provider 문자열→구현체 매핑(카카오·구글 활성). `NaverProvider` 는 파일 보존·미와이어(SEC-001 — 별도 spec 이월) |
 
 ---
 
@@ -189,11 +190,12 @@ postgres (단일 인스턴스, Fly Postgres)
 └── schema: files      (file_assets)
 ```
 
-> **실재 상태**: **31개 테이블 실체화**(Prisma migrate 적용, 마이그레이션 14차) — `users` 8(+ notifications·password_reset_otps) · `products` 6 · `commerce` 4(carts·coupons·user_coupons·reviews) · `orders` 5(+ shipments·shipment_tracking) · `payments` 3(payments·refunds·payment_outbox) · `settlements` 2(settlements·settlement_items) · `admin` 2(banners·admin_audit_logs) · `files` 1(file_assets).
+> **실재 상태**: **32개 테이블 실체화**(Prisma migrate 적용, 마이그레이션 15차) — `users` 9(+ notifications·password_reset_otps·social_accounts) · `products` 6 · `commerce` 4(carts·coupons·user_coupons·reviews) · `orders` 5(+ shipments·shipment_tracking) · `payments` 3(payments·refunds·payment_outbox) · `settlements` 2(settlements·settlement_items) · `admin` 2(banners·admin_audit_logs) · `files` 1(file_assets).
 > Variant 가 옵션을 인라인 필드로 흡수(별도 options 테이블 없음). `order_events`·`inventory_logs`·`shipment_tracking` 은 append-only. 금전 필드(totalAmount·unitPrice·amount·totalSales·commission·payoutAmount·saleAmount 등)는 전부 Decimal(12,2)(P-005). cross-schema/cross-module 참조는 plain String(FK 미선언, P-001) — notifications.userId·file_assets.ownerId·banners 무참조·settlements.sellerId·settlement_items.orderItemId·shipments.orderId 등.
 > notifications 는 `admin` 이 아닌 `users` 스키마에 위치한다(사용자 알림). admin 스키마는 banners·admin_audit_logs 2개(공지·시스템설정 테이블은 미도입 — 필요 시 후속).
 > Refresh Token 은 원문이 아닌 SHA-256 해시(`tokenHash`)로 저장된다(ADR-003).
 > `users.password_reset_otps`(013): 비밀번호 재설정 OTP — email·otpHash(SHA-256)·expiresAt·consumedAt·attempts·createdAt, `@@index([email, createdAt desc])`. OTP 평문 미저장(해시만). attempts 5회 초과 시 consumed 처리(SEC-001 브루트포스 차단).
+> `users.social_accounts`(014): 소셜 계정 연동 — provider·providerId·userId·email·createdAt, `@@unique([provider, providerId])`·`@@index([userId])`·FK onDelete Cascade·`@@schema("users")`(마이그레이션 `20260701064209_add_social_accounts`). `users.users.password: String → String?`(ADR-005) — 소셜 전용 사용자(비밀번호 없음) 허용, 이메일+비밀번호 로그인 시 null 가드. 활성 provider 카카오·구글(네이버 제외 — SEC-001).
 
 **주요 설계 결정 (비도출 지식)**:
 - `cart`: `user_id + JSONB items` 구조로 DynamoDB Carts 테이블 대체.
@@ -238,6 +240,8 @@ postgres (단일 인스턴스, Fly Postgres)
 | 단일 DB 단일 장애점 | Fly Postgres 단일 인스턴스. HA 옵션 미설정 시 장애 시 다운타임 발생 | 전체 | — |
 | 이메일 알림 제공자 미결정 | notification 모듈의 이메일 발송 SaaS(Resend·Mailgun 등) 미선정 | `notification` 모듈 | [TBD] |
 | 비용 추정 불확실 | 실제 트래픽·데이터 크기에 따라 Fly Postgres 요금 재산정 필요 | 인프라 | — |
+| 소셜 신규가입 경로 orphan user 위험 (SEC-002/GAP-014-01, Medium) | `SocialAuthService.login()` path 3c(신규가입)는 createUser+createSocialAccount 두 INSERT 가 `runInTransaction` 으로 원자화되지 않음(root fallback). 두 번째 쓰기 실패 시 password:null orphan user 가 email 슬롯 점유(계정탈취·권한상승 무관, P2002 폴백으로 대부분 자연 복구). 개선: path 3c 를 runInTransaction 래핑 | `auth` 모듈 | 014-social-login (후속 위임) |
+| 소셜 로그인 아웃바운드 rate limit 부재 (SEC-004/GAP-014-06, Low) | POST /auth/social-login 은 요청마다 kapi.kakao.com·oauth2.googleapis.com 로 아웃바운드 HTTP(토큰 검증). 익명·rate limit 부재 → 무효 토큰 대량 전송 시 아웃바운드 증폭. 완화: @nestjs/throttler | `auth` 모듈·운영 | 014-social-login |
 | auth reset-password IP rate limit 부재 (SEC-002/GAP-013-09, Medium) | forgot-password 404·find-email 이 user enumeration 표면. per-email rate limit(60초)만 존재, 글로벌 IP rate limit 미적용 → 다수 이메일/전화 순차 조회 가능. 완화 권고: `@nestjs/throttler` IP rate limit. spec 변경 불요(trade-off 수용) | `auth` 모듈 | 013 (후속 patch spec 또는 014 위임) |
 | resetPassword refresh token revoke 비원자 (SEC-003/GAP-013-10, Medium) | 비밀번호 변경(markOtpConsumed 트랜잭션) 완료 후 revokeAllRefreshTokensByUser 를 별도 best-effort 호출. 서버 비정상 종료 시 세션 미폐기 가능(access token TTL 15분 자연 만료로 Medium). 개선: revoke 를 트랜잭션 내 통합 또는 outbox | `auth` 모듈 | 013 (후속 위임) |
 | auth 보안 감사 로그 부재 (SEC-004/GAP-013-11, Medium) | OTP 검증 실패·rate limit 위반(429)·find-email PII 접근 이벤트 감사 로그 미기재 → 브루트포스·enumeration 시도 추적 불가. 개선: WARN 수준 보안 이벤트 로깅 | `auth` 모듈·운영 | 013 (후속 위임) |
@@ -250,5 +254,6 @@ postgres (단일 인스턴스, Fly Postgres)
 |---|---|---|
 | 2026-06-29 | 008~013 후속 보강 — 추적 백로그 전부 소진. 정산 멱등성·알림 이벤트 연동·쿠폰 할인값 검증·파일 보안·정산 completedAt·관리자 감사 로그. 30테이블, unit 255. §6 제약 대부분 RESOLVED(GAP-005-03만 accepted) | 008~013 |
 | 2026-07-01 | v1.1.0/013-flutter-customer-phase2 — auth 비밀번호 재설정 OTP·이메일 찾기(마스킹)·MailerPort(SMTP/nodemailer)·`GET /auth/me` name·`password_reset_otps` 신규(31테이블·14차)·OTP 브루트포스 차단(SEC-001). §2 auth·MailerPort·§4 데이터모델·§6 Medium 보안부채 3종(SEC-002~004) 등재 | 013-flutter-customer-phase2 |
+| 2026-07-02 | v1.1.0/014-social-login — 소셜 로그인(카카오·구글, 클라이언트 토큰 검증·SocialProviderPort/Resolver·계정해석 3단계 자동연동)·`social_accounts` 신규(32테이블·15차)·`User.password` nullable. Naver 는 SEC-001(앱바인딩 검증 부재)로 완전 제외(별도 spec 이월). §2 auth·social/·§4 데이터모델·§6 SEC-002/004 등재 | 014-social-login |
 | 2026-06-29 | 005·006·007 반영 — 18개 도메인 전부 실구현(배송·정산·검색·알림·파일·배너·통계·운영), 29테이블. notifications 위치 정정(admin→users), file R2 Port+stub 정정, §6 신규 제약(SEC-FIND-005-01·006-01/02, GAP-005-03·006-01/02·007-01, OBS-007-01) 추가 | 005-shipping-settlement, 006-search-notification-file, 007-banner-stats-admin |
 | (이전) | 001~004 골격·카탈로그·거래·리뷰쿠폰 | 001~004 |

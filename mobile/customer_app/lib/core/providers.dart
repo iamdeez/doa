@@ -4,11 +4,17 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import 'api_client.dart';
 import 'token_store.dart';
+import '../features/auth/social_auth_service.dart';
 
 final secureStorageProvider = Provider((_) => const FlutterSecureStorage());
 final tokenStoreProvider = Provider((ref) => TokenStore(ref.read(secureStorageProvider)));
 final apiClientProvider = Provider((ref) => ApiClient(ref.read(tokenStoreProvider)));
 final dioProvider = Provider<Dio>((ref) => ref.read(apiClientProvider).dio);
+
+/// 소셜 로그인 서비스 — 기본값은 스텁(개발/테스트). 운영 시 실제 SDK 구현체로 교체.
+final socialAuthServiceProvider = Provider<SocialAuthService>(
+  (_) => StubSocialAuthService(),
+);
 
 enum AuthStatus { unknown, authenticated, unauthenticated }
 
@@ -32,6 +38,21 @@ class AuthController extends Notifier<AuthStatus> {
     final res = await _dio.post<Map<String, dynamic>>(
       '/auth/login',
       data: {'email': email, 'password': password},
+      options: Options(extra: {'anonymous': true}),
+    );
+    await _tokens.save(
+      accessToken: res.data!['accessToken'] as String,
+      refreshToken: res.data!['refreshToken'] as String,
+    );
+    state = AuthStatus.authenticated;
+  }
+
+  /// 소셜 로그인 — provider SDK 로 토큰 획득 후 백엔드 social-login API 호출.
+  /// [SocialAuthCancelled] 는 호출 측에서 무시(silent recovery)한다.
+  Future<void> socialLogin(String provider, String token) async {
+    final res = await _dio.post<Map<String, dynamic>>(
+      '/auth/social-login',
+      data: {'provider': provider, 'token': token},
       options: Options(extra: {'anonymous': true}),
     );
     await _tokens.save(

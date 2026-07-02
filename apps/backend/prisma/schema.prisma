@@ -15,21 +15,41 @@ datasource db {
 // users 스키마 — Stage 1 + Stage 2 실체화 테이블
 // ============================================================
 
-/// 사용자 기본 정보. password 는 bcrypt 해시값만 저장 (NFR-005).
+/// 사용자 기본 정보. password: bcrypt 해시값만 저장, 소셜 전용 사용자는 null (ADR-005).
 model User {
-  id            String         @id @default(cuid())
-  email         String         @unique
-  password      String
-  name          String?
-  phone         String?
-  createdAt     DateTime       @default(now())
-  refreshTokens RefreshToken[]
-  seller        Seller?
-  addresses     Address[]
-  wishlists     Wishlist[]
-  productViews  ProductView[]
+  id             String          @id @default(cuid())
+  email          String          @unique
+  password       String?
+  name           String?
+  phone          String?
+  createdAt      DateTime        @default(now())
+  refreshTokens  RefreshToken[]
+  seller         Seller?
+  addresses      Address[]
+  wishlists      Wishlist[]
+  productViews   ProductView[]
+  socialAccounts SocialAccount[]
 
   @@map("users")
+  @@schema("users")
+}
+
+/// 소셜 로그인 연동 계정. 사용자당 N건(복수 제공자 연동 가능, ADR-004).
+/// provider+providerId 복합 유니크: 동일 소셜 계정 중복 연동 차단·동시성 P2002 방어 (FR-004).
+model SocialAccount {
+  id         String   @id @default(cuid())
+  userId     String
+  provider   String
+  providerId String
+  /// 연동 시점 제공자 이메일. FR-003(email null 거부) 이후에만 insert — DB NOT NULL 유지.
+  email      String
+  name       String?
+  createdAt  DateTime @default(now())
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerId])
+  @@index([userId])
+  @@map("social_accounts")
   @@schema("users")
 }
 

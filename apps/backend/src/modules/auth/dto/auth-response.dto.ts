@@ -43,3 +43,11 @@ export class FindEmailResponse {
   @ApiProperty({ example: 'us**@example.com', description: '마스킹된 이메일' })
   email!: string;
 }
+
+export class SocialLoginResponse {
+  @ApiProperty({ description: 'JWT access token' })
+  accessToken!: string;
+
+  @ApiProperty({ description: 'JWT refresh token' })
+  refreshToken!: string;
+}
