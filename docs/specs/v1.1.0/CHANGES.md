@@ -1,3 +1,86 @@
+## [017-seller-admin-read-apis] 구현 완료
+
+> v1.1.0 의 열일곱 번째 차수 — **console 실통합 중 발견된 백엔드 계약 갭(BE-GAP-002~007) 6건 해소**:
+> (1) admin/seller — 관리자 판매자 목록 API 확장(FR-001~003): 기존 `GET /admin/sellers/pending`
+> 에 status(PENDING/APPROVED/REJECTED, 미지정 시 PENDING 하위호환)·cursor·limit·businessName 부분
+> 일치 검색(q) query 를 추가하고 응답을 `SellerProfile[]` → `{items, nextCursor}` envelope 으로 전환
+> (BE-GAP-002, breaking). (2) seller/product — 신규 `GET /sellers/me/products/:id`(FR-004~005):
+> 소유 상품을 상태 무관(DRAFT 포함) ID 단건 상세 조회, variants·images 포함. 404(미존재)→403(비소유)
+> 분기 순서로 `assertOwner` 재사용(IDOR 방어, BE-GAP-003). (3) `GET /sellers/me/products`(FR-006):
+> cursor·limit 페이지네이션 추가 + envelope 화(BE-GAP-004, breaking). (4) 목록 응답 형태 통일
+> (FR-007): (1)·(3) 두 목록 모두 기존 `GET /products` 와 동일한 `{items, nextCursor}` envelope 채택
+> (BE-GAP-006, 신규 2개 목록에 한정 — 기존 소형 배열 목록은 불변). (5) inventory — 재고 응답 구조화
+> (FR-008~009): `GET .../stock` 원시 숫자 → `{variantId, stock}`, `POST .../stock-in` void 응답
+> → `{variantId, stock}`(입고 후 갱신값, 상태코드 200 불변)(BE-GAP-005, breaking). (6) user — 위시
+> 리스트·최근 본 상품 상품 요약 조인(FR-010~012): `ProductService.getPublicSummaries()`(신규 공개
+> DI 메서드, 단일 `in` 쿼리)로 title·price·thumbnailUrl 인라인 병합. 조회 불가(DRAFT/INACTIVE/삭제/
+> 미존재) 상품 참조 항목은 제외하지 않고 `productAvailable:false`+`product:null` 로 유지(BE-GAP-007,
+> additive, constitution P-001 모듈 경계 — user 모듈이 products 스키마 직접 쿼리 금지, NFR-004/SC-021
+> 정적 검증).
+>
+> base `0196b9a`(015·016 완료 커밋) → working tree(미커밋). 변경 추적:
+> `git diff 0196b9a -- apps/backend` (tracked modified 21 files, +983/-96). 신규(untracked) 파일 4건
+> (테스트 3·DTO 1, 총 429줄)은 git add 후 동 커밋에 포함 예정. working tree 에 본 spec 과 무관한
+> 미커밋 chore 3건(`fly.toml`·`apps/console/playwright.config.ts`·`docs/ops/social-login-setup.md`)이
+> 공존하나 본 변경 파일 목록·DIFF-017 에서 명시적으로 제외했다(범위 밖).
+> **신규 npm 의존 0건**(기존 NestJS·Prisma 스택 승계). **신규 Prisma 마이그레이션 없음**(모든 변경은
+> 기존 테이블·컬럼 범위 내 응답 DTO/조회 로직 확장). 선택 단계: Database Design Agent·Deploy Agent
+> 비활성(selection-phases.md). **Security Agent·Performance Agent 는 본 Docs 단계 다음으로 활성 실행
+> 예정**(관리자 판매자 목록 PII 노출 표면·IDOR 3축 인가 감사 / NFR-001 P95 500ms 정적 리뷰+실측 검증) —
+> 아래 "미해결 GAP" 참조.
+
+**변경 파일**:
+
+백엔드 — 수정:
+- `apps/backend/src/modules/admin/admin.constants.ts` (+4): `DEFAULT_SELLER_PAGE_LIMIT=20`·`MAX_SELLER_PAGE_LIMIT=100` 신설
+- `apps/backend/src/modules/admin/admin.controller.ts` (+22/-5): `listPendingSellers` 시그니처 확장(status·cursor·limit·q query), `AdminSellerListResponse` 반환
+- `apps/backend/src/modules/admin/admin.service.ts` (+31/-4): 신규 `listSellers(status, cursor, limit, q)` → `SellerService.listSellers` 위임, limit 클램프
+- `apps/backend/src/modules/admin/dto/admin-response.dto.ts` (+10): `AdminSellerListResponse {items, nextCursor}` 신설
+- `apps/backend/src/modules/seller/seller.repository.ts` (+22): 신규 `listByStatusPaginated({status, cursor, take, q})`(businessName insensitive contains 검색)
+- `apps/backend/src/modules/seller/seller.service.ts` (+15): 신규 공개 `listSellers({status, cursor, take, q})`(admin 소비, 기존 `listByStatus` 유지·비파괴)
+- `apps/backend/src/modules/product/product.controller.ts` (+23/-3): `listMyProducts` cursor·limit 파라미터 추가, 신규 `GET products/:id` `getMyProductDetail` 라우트
+- `apps/backend/src/modules/product/product.repository.ts` (+22/-2): `listBySeller` orderBy 2차키(`id desc`)·cursor·take 추가(cursor 안정성)
+- `apps/backend/src/modules/product/product.service.ts` (+48/-2): 신규 `getMyProductDetail(userId, productId)`(404→403 분기, assertOwner 재사용), `listMyProducts` envelope 화, 신규 공개 `getPublicSummaries(productIds)`(단일 in 쿼리, Map 반환)
+- `apps/backend/src/modules/inventory/inventory.controller.ts` (+9/-3): `getStock`→`getStockView` 위임, `stockIn` 반환값 그대로 전달
+- `apps/backend/src/modules/inventory/inventory.service.ts` (+21/-3): 신규 `getStockView(variantId)`({variantId,stock}), `stockIn` 반환형 `void`→`InventoryStockView`(increment→appendLog→onAfterCommit→재조회→반환)
+- `apps/backend/src/modules/user/dto/user-response.dto.ts` (+29/-3): `WishlistResponse`·`RecentViewResponse` 에 `productAvailable`·`product`(nullable `WishlistProductSummary`) 필드 추가
+- `apps/backend/src/modules/user/user.module.ts` (+4/-1): `imports` 에 `ProductModule` 추가(신규 DI, 순환 없음 확인)
+- `apps/backend/src/modules/user/user.service.ts` (+48/-5): `listWishlist`·`listRecentViews` enrichment — `ProductService.getPublicSummaries()` DI 호출 후 `productAvailable`+`product` 병합 공통 헬퍼
+- 테스트 파일(§F 마이그레이션·신규 SC 반영, 회귀 0): `admin.service.spec.ts`(+162/-10)·`inventory.controller.spec.ts`(+27/-11)·`inventory.service.spec.ts`(+99/-4)·`product.service.spec.ts`(+215/-22)·`user.service.spec.ts`(+140/-2)·`test/banner-admin.e2e-spec.ts`(+10/-2, SC-011 envelope 회귀 방어)·`test/static/auth-required-guards.spec.ts`(+22/-14, SC-019 신규·확장 엔드포인트 반영)
+
+백엔드 — 신규:
+- `apps/backend/src/modules/admin/admin.controller.spec.ts` (104줄, 신규): SC-020 가드 메타데이터 검증
+- `apps/backend/src/modules/inventory/dto/inventory-stock-response.dto.ts` (10줄, 신규): `InventoryStockResponse {variantId, stock}`
+- `apps/backend/test/static/user-product-boundary.spec.ts` (109줄, 신규): SC-021 — user 모듈 products 스키마 직접 참조 0건 정적 검증
+- `apps/backend/test/perf/list-p95.e2e-spec.ts` (206줄, 신규): SC-018 — P95 실측(admin/sellers/pending·sellers/me/products, 옵션 A)
+
+산출물 문서(참조, 코드 아님):
+- `docs/specs/v1.1.0/017-seller-admin-read-apis/{spec,planning,design,test}/*.md`: spec.md·plan.md·research.md·tasks.md·test-cases.md·coverage.md·coverage-gap.md·test-report.md·gaps.md·assumptions.md·spec-input.md·selection-phases.md (파이프라인 표준 산출물, 신규 12개 파일 1,741줄)
+
+**검증** (5b Test Agent EXECUTION, coverage.md/test-report.md 기준):
+- 백엔드 전체: `pnpm --filter backend typecheck` 0 error, unit **36 suites / 366 tests 전량 PASS**(회귀 0), static(auth-required-guards/user-product-boundary/cross-schema/inventory-service-signature) 4 suites/25 tests PASS, integration(banner-admin e2e·perf/list-p95) 2 suites/10 tests PASS
+- SC-001~021 **전건 PASS(21/21)**. SC-018(P95) 실측: `GET /admin/sellers/pending` P95=3ms, `GET /sellers/me/products` P95=4ms(임계값 500ms 대비 여유 큼, 사용자 옵션 A — 로컬 docker-compose 상시 가동 확인 후 5b 직접 실측)
+- 설계 문서(plan.md §1~5, ADR-001~008) 정합성 불일치 0건
+- Breaking change 잔여 참조 검증: `grep -rn "\.listPendingSellers("` 서비스 레벨 호출 0건(컨트롤러 핸들러명은 라우트 경로 유지 목적으로 존치, breaking 대상 아님)
+- STALE_SC 27건(§F 마이그레이션 파일의 선행 spec(002/003/004) SC 인용 비정형 문구) 발견 → 사용자 결정(옵션 A, 016 선례 동일)에 따라 6개 파일 17개 위치를 `(vX.Y.Z/NNN spec)` 정규식 형식으로 grep+Edit 일괄 정정(production 코드·테스트 로직·기대 단언 불변, 주석만 변경) → 재실행 unit 366/366·static+e2e 33/33 재확인, STALE_SC 0건
+
+**해결된 GAP**: 없음(Design Agent gaps.md — 공백 0건 판정, GAP-017-01 은 "오류 아닌 갱신 권고"로 신규 등록. 5b Test Agent EXECUTION gaps: NONE).
+
+**미해결 GAP / 후속 단계 위임** (Retrospective Agent 위임 / Security·Performance Agent 후속 판정 대상):
+- **Security Agent 감사 (필수, 미실행)**: selection-phases.md Y 판정(NFR-002/003 인증·인가, FR-005 IDOR 방어, 관리자 판매자 목록 PII 노출 표면 3축 인가). 본 Docs 단계 다음으로 이어질 단계.
+- **Performance Agent 정적 리뷰 (필수, 미실행)**: selection-phases.md Y 판정(NFR-001 P95 500ms). SC-018 은 5b 가 이미 실측 PASS 했으나, 신규 인덱스 부재 여부(`seller.status`·`product.sellerId` 조회 경로) 정적 리뷰는 별도 단계로 수행.
+- **GAP-017-01 (OPEN, 문서-갱신-필요, Design Agent 등록)**: context.md §6 "위시리스트·최근 본 상품 productId cross-schema 고아 참조" 제약 항목에 "응답 레벨은 FR-012(productAvailable:false)로 부분 흡수됨(017)" 보강 필요. Docs Agent 직접 수정 불가(agent-rules.md §3.1) — Retrospective Agent 위임.
+- **GAP-017-02 (신규, 문서-갱신-필요, Docs Agent 발견)**: context.md §2 "핵심 도메인 모듈 목록" 표의 admin/seller/product/inventory/user 5개 행이 본 spec 의 신규 조회 계약(관리자 판매자 목록 필터·검색·페이지네이션, 판매자 상품 상세/목록 페이지네이션, 재고 응답 구조화, 위시리스트/최근 본 상품 상품 요약 조인)을 반영하지 못한 상태다. §1 개요 스냅샷의 테스트 카운트(unit 255→366, 25→36 suites)도 갱신 필요. 코드 검증 완료(gaps.md GAP-017-02 참조). Docs Agent 직접 수정 불가 — Retrospective Agent 위임.
+- **console 배포 순서 동기화 (범위 외, 운영 위임)**: FR-007(목록 envelope 통일)·FR-008~009(재고 응답 구조화)는 breaking change. `apps/console` 의 `seller/products`(실통합 배선됨)·재고 조회/입고 호출부는 이 응답 계약 배포 전에 함께 갱신되어야 회귀가 없다(spec.md "범위 외 §배포 순서 고려사항"). `admin/sellers`·`account/wishlist` 화면은 현재 미배선(플레이스홀더)이라 자유롭다.
+- **PROC-014 사후 운영 검증 4개 시나리오 (범위 외, 운영 셋업 이후 수행)**: envelope 전환 프론트 회귀·재고 응답 소비·대량 데이터 커서 무한스크롤·조회 불가 상품 표시(spec.md "사후 운영 검증 피드백 사이클" 참조).
+
+**후속 작업 시 주의사항**:
+- **console 프론트 회귀 방지 필수 확인**: `GET /sellers/me/products`·`GET/POST /inventory/...` 응답 계약이 breaking 변경되었다. console 배선부가 신규 envelope/구조화 응답을 소비하도록 갱신되기 전까지는 배포 순서를 반드시 동기화해야 한다(console 측 작업은 본 spec 범위 밖).
+- **admin/sellers 목록은 하위 호환 유지**: `status` 미지정 시 기존과 동일하게 PENDING 만 반환(SC-003). 응답 envelope 만 breaking(console admin/sellers 미배선으로 현재는 영향 없음).
+- **Security·Performance Agent 완료 후 최종 gate 확정**: 본 spec 은 6단계(Docs) 완료 시점 기준이며, 관리자 판매자 목록의 IDOR/PII 노출 3축 인가 최종 판정과 신규 조회 경로 인덱스 정적 리뷰는 후속 선택 단계에서 확정된다.
+
+---
+
 ## [016-naver-state-redirect-hardening] 구현 완료
 
 > **[사후 정합화 2026-07-03 22:21]** 아래 본문은 6단계 Docs 시점 스냅샷이라 SC-014/015 를 "PENDING",

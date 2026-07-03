@@ -15,7 +15,11 @@ import { CurrentUser } from '../../shared/auth/current-user.decorator';
 import { AuthenticatedUser } from '../../shared/auth/jwt.strategy';
 import { AdminService } from './admin.service';
 import { SellerProfileResponse } from '../seller/dto/seller-response.dto';
-import { AdminAuditLogResponse, AdminUserListResponse } from './dto/admin-response.dto';
+import {
+  AdminAuditLogResponse,
+  AdminSellerListResponse,
+  AdminUserListResponse,
+} from './dto/admin-response.dto';
 
 // ── 관리자 운영 API (운영 조회/조치) ─────────────────────────────────
 
@@ -24,11 +28,24 @@ import { AdminAuditLogResponse, AdminUserListResponse } from './dto/admin-respon
 export class AdminController {
   constructor(private readonly adminService: AdminService) {}
 
-  /** GET /admin/sellers/pending — 승인 대기 판매자 목록 */
+  /**
+   * GET /admin/sellers/pending — 판매자 목록 (017).
+   * status 미지정 시 PENDING(하위 호환). cursor·limit·q(businessName 부분 일치) 지원.
+   */
   @Get('sellers/pending')
-  @ApiOkResponse({ type: [SellerProfileResponse] })
-  async listPendingSellers() {
-    return this.adminService.listPendingSellers();
+  @ApiOkResponse({ type: AdminSellerListResponse })
+  async listPendingSellers(
+    @Query('status') status?: string,
+    @Query('cursor') cursor?: string,
+    @Query('limit') limit?: string,
+    @Query('q') q?: string,
+  ) {
+    return this.adminService.listSellers(
+      status,
+      cursor,
+      limit ? parseInt(limit, 10) : undefined,
+      q,
+    );
   }
 
   /** POST /admin/sellers/:id/approve — 판매자 승인 (seller 도메인 재사용) + 감사 로그 기록 */

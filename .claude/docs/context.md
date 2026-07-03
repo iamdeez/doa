@@ -19,7 +19,7 @@
 
 > 001~007 완료. `apps/backend`(NestJS **18모듈 전부 실구현** — auth·user·seller·product·inventory·cart·order·payment·coupon·review·shipping·settlement·search·notification·file·banner·stats·admin),
 > Prisma **33테이블**·JWT·AdminGuard·소셜로그인(카카오·구글·네이버)·ALS 트랜잭션·pg-boss·쿠폰(서버할인·이중사용방지)·리뷰(orderItem)·배송(송장·추적·상태전이)·정산(Decimal 집계·멱등)·검색·알림(이벤트 연동)·파일(R2 Port+stub)·배너·통계·운영(감사 로그)·Docker·CI 실재.
-> 단위/통합 테스트: unit 255 PASS(25 suites) + e2e/static 84 PASS(16 suites). (005~007 경량 구현 후 정식 검증·문서화 + 008~013 후속 보강 완료.)
+> 단위/통합 테스트: unit 366 PASS(36 suites) + static/e2e 대상 스위트 PASS(017 5b 실행 기준). (005~007 경량 구현 후 정식 검증·문서화 + 008~013 후속 보강 + 014~017 완료.)
 > **후속 보강 완료**: 008 정산 멱등성(SEC-FIND-005-01), 009 알림 이벤트 연동(GAP-006-01), 010 쿠폰 할인값 검증(SEC-001), 011 파일 보안(SEC-FIND-006-01/02·GAP-006-02), 012 정산 completedAt(GAP-005-02), 013 관리자 감사 로그(GAP-007-01) 전부 해결. **추적 백로그 전부 소진**(잔여 SEC/GAP 0, GAP-005-03만 accepted).
 > **잔여 알려진 제약**: 마이그레이션 드리프트(GAP-005-03, accepted) — §6. 그 외 신규 발견 시 각 spec gaps.md·§6 에 추적.
 
@@ -73,10 +73,10 @@ Events (발행/구독 — NestJS EventEmitter)
 | 모듈 | 담당 스키마 | 역할 |
 |---|---|---|
 | `auth` | `users` | 로그인/JWT/Refresh/비밀번호 재설정 OTP(POST /auth/forgot-password·/auth/reset-password)·이메일 찾기(POST /auth/find-email, 마스킹 반환)/세션 · 소셜 로그인(POST /auth/social-login — 카카오·구글·**네이버** 3종. 네이버는 code-exchange(client_secret 서버 교환) 방식, 카카오·구글은 클라이언트 토큰 검증 방식(혼합). SocialAuthService 계정해석 3단계: providerId 매칭 재로그인→email 매칭 자동연동(카카오·구글 한정)→신규가입) · **`POST /auth/naver/state`(익명, CSRF state 발급)** — `OAuthStateService`(`social/oauth-state.service.ts`)가 state 발급(randomBytes(32) base64url·TTL 10분)·검증·원자적 1회성 소비(delete-on-consume). 네이버 code-exchange 는 로그인 전 이 엔드포인트로 발급받은 state 를 echo, 서버가 verify 이전 검증(SEC-015-02 하드닝, 016) |
-| `user` | `users` | 프로필/배송지/찜(wishlist)/최근 본 상품/등급 |
-| `seller` | `users` | 판매자 등록·심사·판매자 정보 |
-| `product` | `products` | 상품/카테고리/옵션/이미지 |
-| `inventory` | `products` | 재고/입출고 로그/SKU |
+| `user` | `users` | 프로필/배송지/찜(wishlist)/최근 본 상품/등급 · 위시리스트·최근 본 상품 응답에 상품 요약(title·price·thumbnailUrl) 인라인 조인(`ProductService.getPublicSummaries()` DI, UserModule→ProductModule import)·조회 불가 상품은 `productAvailable:false` 유지 — 017 |
+| `seller` | `users` | 판매자 등록·심사·판매자 정보 · 신규 공개 `listSellers({status,cursor,take,q})`(admin 모듈 DI 소비)·repository `listByStatusPaginated()` — 017 |
+| `product` | `products` | 상품/카테고리/옵션/이미지 · 판매자 소유 상품 상세 `GET /sellers/me/products/:id`(전 상태 허용, 404→403 assertOwner)·목록 cursor 페이지네이션+envelope 화·공개 요약 `getPublicSummaries(ids)`(user 모듈 DI 제공, ACTIVE/OUT_OF_STOCK 필터) — 017 |
+| `inventory` | `products` | 재고/입출고 로그/SKU · 재고 조회/입고 응답 `{variantId, stock}` 구조화(getStockView·stockIn 반환형, breaking — 원시 숫자/void 대체) — 017 |
 | `cart` | `commerce` | 장바구니 (JSONB items) |
 | `coupon` | `commerce` | 쿠폰 발급·사용 |
 | `review` | `commerce` | 리뷰·평점 |
@@ -89,7 +89,7 @@ Events (발행/구독 — NestJS EventEmitter)
 | `file` | `files` | 파일 메타데이터·presign (file_assets). R2는 `FileStoragePort` + `StubFileStorage`(무네트워크) |
 | `banner` | `admin` | 배너 노출 (banners 테이블) — 관리자 CRUD + 공개 노출(활성·기간 필터) |
 | `stats` | (자체 테이블 없음) | 집계·통계 — order/user/seller Service 공개 메서드 DI 조합 (매출 Decimal) |
-| `admin` | `admin` (audit) | 운영 — 판매자 승인 대기/승인(SellerService.approve 재사용)·사용자 목록 + 조치 감사 로그(admin_audit_logs, append-only) |
+| `admin` | `admin` (audit) | 운영 — 판매자 승인 대기/승인(SellerService.approve 재사용)·사용자 목록 + 조치 감사 로그(admin_audit_logs, append-only) · 판매자 목록 조회 확장(상태 필터 PENDING/APPROVED/REJECTED·businessName 검색·cursor 페이지네이션, 응답 `{items,nextCursor}` envelope — 017) |
 
 > **구현 상태**: **18개 모듈 전부 실구현**(001~007). search·stats·admin 은 자체 트랜잭션 테이블 없이 타 도메인 Service 공개 메서드를 DI 경유로 조합하는 read-only/오케스트레이션 모듈이다(P-001 — repository 빈 클래스 또는 자기 스키마 집계만).
 >
@@ -236,7 +236,8 @@ postgres (단일 인스턴스, Fly Postgres)
 | 마이그레이션 드리프트 (GAP-005-03, **수용/accepted**) | 005 마이그레이션 SQL 에 004(coupons·reviews) 테이블 생성 동반 캡처(004 모델이 schema 엔 있었으나 별도 마이그레이션 부재). **결정(2026-06-29)**: 그대로 둠 — `migrate deploy` 는 순서대로 전부 생성하여 정상 동작하고 `migrate status` up-to-date. 적용된 폴더 분할/개명은 `_prisma_migrations` 기록과 어긋나 환경을 깨뜨릴 위험이 라벨 불일치(cosmetic)보다 큼. 운영 배포 직전 필요 시에만 전체 squash 리셋 재검토 | `prisma/migrations` | 005 |
 | ~~admin audit log 부재 (GAP-007-01)~~ | **RESOLVED (013-admin-audit-log)** — admin_audit_logs(append-only) + 판매자 승인 시 SELLER_APPROVE 기록 + `GET /admin/audit-logs`. 잔여(범위 외): 감사 대상이 승인 1종 — banner CRUD 등 추가 mutation 감사·기록 실패 격리는 후속. OBS-007-01(승인 라우트 이중 표면)은 유지(운영 라우트 일원화 후속 검토) | `admin` | 013 |
 | ~~inventory 재고입고 소유권 미검증 (SEC-002)~~ | **RESOLVED (003-commerce)** — `assertSellerOwnsVariant`(variantId→product→seller 소유권 검증)를 inventory stock-in·getStock 에 적용 | `inventory`·`product` | 003-commerce FR-050/051 |
-| cross-schema plain String 참조 (P-001·ADR-001) | users·products 스키마 간 FK 없음. Wishlist/ProductView.productId·Product.sellerId·InventoryLog.variantId 등 plain String 참조 → DB 수준 참조 무결성 없음(의도적), 삭제 시 고아 레코드 가능 | users·products 스키마 | 002-catalog |
+| cross-schema plain String 참조 (P-001·ADR-001) | users·products 스키마 간 FK 없음. Wishlist/ProductView.productId·Product.sellerId·InventoryLog.variantId 등 plain String 참조 → DB 수준 참조 무결성 없음(의도적), 삭제 시 고아 레코드 가능 — 위시리스트·최근 본 상품 조회 응답은 `productAvailable:false` 표시로 고아 참조를 **응답 레벨에서 흡수**(017 FR-012·ADR-007, `getPublicSummaries` ACTIVE/OUT_OF_STOCK 필터 미조회 시 항목 유지+표시). 스키마 레벨 참조 무결성 부재 자체는 잔존 | users·products 스키마 | 002-catalog·017 |
+| cursor 목록 API @Query 파라미터 DTO 미검증 (SEC-017-01, Low·비블로킹) | `admin/sellers/pending`·`sellers/me/products` 등 cursor 페이지네이션 엔드포인트가 `@Query('limit')`/`@Query('cursor')` 개별 추출 후 수동 `parseInt` 하여 전역 ValidationPipe(class-validator DTO 전용)를 우회. `limit=abc`→`NaN` 이 Math.max/min 클램프 통과→Prisma `take: NaN` 500 유발 가능. 007-admin(`GET /admin/users`·`/audit-logs`)부터 승계된 공통 패턴(017 신규 회귀 아님). 인증·인가 우회·정보노출 없음. 해소: `ListProductsDto` 패턴의 Query DTO 전환 | admin·seller·product 목록 컨트롤러 공통 | 017 발견 / 007 기원 |
 | pino-pretty 미설치 | 로컬 `NODE_ENV=development` 에서 pino-pretty transport 모듈 오류. e2e 는 `NODE_ENV=production`(JSON 로그) 우회 중. 해소: `pnpm add -D pino-pretty --filter backend` | `apps/backend` 로컬 dev 로그 | 001-skeleton-bootstrap |
 | 검색 성능 한계 | PostgreSQL tsvector/pg_trgm은 OpenSearch 대비 성능·기능 열위. 트래픽 증가 시 Meilisearch 도입 필요 | `search` 모듈 | — |
 | 단일 DB 단일 장애점 | Fly Postgres 단일 인스턴스. HA 옵션 미설정 시 장애 시 다운타임 발생 | 전체 | — |

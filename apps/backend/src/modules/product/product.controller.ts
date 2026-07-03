@@ -41,15 +41,35 @@ export class CategoriesController {
   }
 }
 
-/** /sellers/me/products — 승인 판매자 본인 상품 목록 */
+/** /sellers/me/products — 승인 판매자 본인 상품 목록·상세 (017) */
 @Controller('sellers/me')
 @UseGuards(JwtAuthGuard)
 export class SellerProductController {
   constructor(private readonly productService: ProductService) {}
 
+  /** GET /sellers/me/products — cursor 페이지네이션 목록 */
   @Get('products')
-  listMyProducts(@CurrentUser() user: AuthenticatedUser) {
-    return this.productService.listMyProducts(user.userId);
+  @ApiOkResponse({ type: ProductListResponse })
+  listMyProducts(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query('cursor') cursor?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.productService.listMyProducts(
+      user.userId,
+      cursor,
+      limit ? parseInt(limit, 10) : undefined,
+    );
+  }
+
+  /** GET /sellers/me/products/:id — 소유 상품 상태 무관 상세, variants·images 포함 */
+  @Get('products/:id')
+  @ApiOkResponse({ type: ProductDetailResponse })
+  getMyProductDetail(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') productId: string,
+  ) {
+    return this.productService.getMyProductDetail(user.userId, productId);
   }
 }
 
