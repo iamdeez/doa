@@ -5,15 +5,21 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'api_client.dart';
 import 'token_store.dart';
 import '../features/auth/social_auth_service.dart';
+import '../features/auth/real_social_auth_service.dart';
 
 final secureStorageProvider = Provider((_) => const FlutterSecureStorage());
 final tokenStoreProvider = Provider((ref) => TokenStore(ref.read(secureStorageProvider)));
 final apiClientProvider = Provider((ref) => ApiClient(ref.read(tokenStoreProvider)));
 final dioProvider = Provider<Dio>((ref) => ref.read(apiClientProvider).dio);
 
-/// 소셜 로그인 서비스 — 기본값은 스텁(개발/테스트). 운영 시 실제 SDK 구현체로 교체.
+/// 소셜 로그인 서비스 — 기본값은 스텁(개발/테스트). 운영 빌드는
+/// `--dart-define=USE_REAL_SOCIAL=true` 로 [RealSocialAuthService] 활성화(kakao·google SDK + naver code-exchange).
+/// 플래그 미설정 시 Stub 이 유지되어 위젯 테스트·SDK 미초기화 개발 환경이 그대로 동작한다.
+const _useRealSocial = bool.fromEnvironment('USE_REAL_SOCIAL');
 final socialAuthServiceProvider = Provider<SocialAuthService>(
-  (_) => StubSocialAuthService(),
+  (ref) => _useRealSocial
+      ? RealSocialAuthService(ref.read(dioProvider))
+      : StubSocialAuthService(),
 );
 
 enum AuthStatus { unknown, authenticated, unauthenticated }
