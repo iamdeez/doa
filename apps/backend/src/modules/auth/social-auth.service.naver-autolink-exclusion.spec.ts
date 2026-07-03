@@ -15,6 +15,11 @@
  * [§F 마이그레이션, v1.1.0/016 SC-011] SocialAuthService 생성자에 OAuthStateService
  * 4번째 인자가 추가되어 DI mock 을 등록한다. naver 케이스는 `consume` 을 true 로 고정하고
  * state 인자를 전달해 기존 자동연동 배제 단언이 회귀 없이 유지되도록 한다.
+ *
+ * [§F 마이그레이션, v1.1.0/018 SC-011·020] SocialAuthService 생성자에 PrismaService
+ * 5번째 인자가 추가되어(path 3c 트랜잭션 원자화, FR-005) DI mock 을 등록한다. 이 파일의
+ * 케이스는 path 3b(자동연동 배제)만 다루므로 runInTransaction 은 호출되지 않으나
+ * DI 해석을 위해 mock 등록이 필요하다.
  */
 
 import { ConflictException } from '@nestjs/common';
@@ -24,6 +29,7 @@ import { SocialProviderResolver } from './social/social-provider.resolver';
 import { AuthRepository } from './auth.repository';
 import { AuthService } from './auth.service';
 import { OAuthStateService } from './social/oauth-state.service';
+import { PrismaService } from '../../shared/prisma/prisma.service';
 
 const EXISTING_USER = {
   id: 'user-existing-sec015',
@@ -66,6 +72,11 @@ const makeMockOAuthStateService = () => ({
   issue: jest.fn(),
   consume: jest.fn(),
 });
+// v1.1.0/018 SC-011·020: 콜백을 실제 실행(fn())하여 내부 repo 호출이 유지되도록 한다.
+const makeMockPrismaService = () => ({
+  runInTransaction: jest.fn(async (fn: () => unknown) => fn()),
+  tx: {},
+});
 
 describe('SocialAuthService — naver AUTO_LINK 제외 회귀 (SEC-015-01)', () => {
   let service: SocialAuthService;
@@ -74,6 +85,7 @@ describe('SocialAuthService — naver AUTO_LINK 제외 회귀 (SEC-015-01)', () 
   let mockRepo: ReturnType<typeof makeMockAuthRepository>;
   let mockAuthService: ReturnType<typeof makeMockAuthService>;
   let mockOAuthStateService: ReturnType<typeof makeMockOAuthStateService>;
+  let mockPrismaService: ReturnType<typeof makeMockPrismaService>;
 
   beforeEach(async () => {
     mockResolver = makeMockSocialProviderResolver();
@@ -81,6 +93,7 @@ describe('SocialAuthService — naver AUTO_LINK 제외 회귀 (SEC-015-01)', () 
     mockRepo = makeMockAuthRepository();
     mockAuthService = makeMockAuthService();
     mockOAuthStateService = makeMockOAuthStateService();
+    mockPrismaService = makeMockPrismaService();
     mockOAuthStateService.consume.mockResolvedValue(true);
 
     const module: TestingModule = await Test.createTestingModule({
@@ -90,6 +103,7 @@ describe('SocialAuthService — naver AUTO_LINK 제외 회귀 (SEC-015-01)', () 
         { provide: AuthRepository, useValue: mockRepo },
         { provide: AuthService, useValue: mockAuthService },
         { provide: OAuthStateService, useValue: mockOAuthStateService },
+        { provide: PrismaService, useValue: mockPrismaService },
       ],
     }).compile();
 

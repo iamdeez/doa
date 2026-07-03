@@ -5,6 +5,7 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import { PrismaService } from '../../shared/prisma/prisma.service';
 import { AuthRepository } from './auth.repository';
 import { AuthService } from './auth.service';
 import { OAuthStateService } from './social/oauth-state.service';
@@ -56,6 +57,7 @@ export class SocialAuthService {
     private readonly repo: AuthRepository,
     private readonly authService: AuthService,
     private readonly oauthStateService: OAuthStateService,
+    private readonly prisma: PrismaService,
   ) {}
 
   async login(provider: string, token: string, state?: string): Promise<SocialLoginResult> {
@@ -127,23 +129,27 @@ export class SocialAuthService {
       return this.authService.issueTokensForUser(existingUser);
     }
 
-    // 3c. 신규 사용자 + 소셜 계정 순차 생성
+    // 3c. 신규 사용자 + 소셜 계정 원자 생성(FR-005/ADR-005) — 한쪽 실패 시 양쪽 모두 롤백.
     try {
-      const newUser = await this.repo.createUser({
-        email,
-        name: profile.name,
-        password: null,
+      const newUser = await this.prisma.runInTransaction(async () => {
+        const u = await this.repo.createUser({
+          email,
+          name: profile.name,
+          password: null,
+        });
+        await this.repo.createSocialAccount({
+          userId: u.id,
+          provider,
+          providerId: profile.providerId,
+          email,
+          name: profile.name,
+        });
+        return u;
       });
-      await this.repo.createSocialAccount({
-        userId: newUser.id,
-        provider,
-        providerId: profile.providerId,
-        email,
-        name: profile.name,
-      });
-      return this.authService.issueTokensForUser(newUser);
+      return this.authService.issueTokensForUser(newUser); // 커밋 후 발급 — 원자성 대상 아님
     } catch (err) {
-      // P2002: 동시성 충돌 — 이미 다른 요청이 사용자·소셜계정 생성 완료
+      // P2002 폴백은 트랜잭션 외부에 유지한다(SC-011 회귀 방지) — 롤백 완료 후 root 클라이언트로
+      // race 복구 조회를 수행해야 하므로 이 catch 를 트랜잭션 내부로 옮기지 않는다(ADR-005).
       if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
         const raceResult = await this.repo.findByProviderAndProviderId(
           provider,

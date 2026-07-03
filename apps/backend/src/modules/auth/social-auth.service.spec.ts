@@ -17,10 +17,18 @@
  * 4번째 인자가 추가되어 DI mock 을 등록한다. 이 파일은 kakao/google 만 다루며 해당
  * provider 는 state 분기 자체에 진입하지 않으므로(FR-006) mock 동작은 불필요하고
  * DI 해석용 provider 등록만 필요하다.
+ *
+ * [§F 마이그레이션, v1.1.0/018 SC-010·011·020] SocialAuthService 생성자에 PrismaService
+ * 5번째 인자가 추가되어(path 3c 트랜잭션 원자화, FR-005) DI mock 을 등록한다.
+ * `runInTransaction: jest.fn(async (fn) => fn())` 로 콜백을 실제 실행하여 내부
+ * createUser·createSocialAccount 호출이 기존과 동일하게 유지되도록 한다(Test Authoring
+ * Contract canonical). SC-010(신규가입 트랜잭션 롤백)·SC-011(P2002 폴백 회귀 없음)은
+ * 이 파일 하단에 신규 추가한다.
  */
 
 import { Test, TestingModule } from '@nestjs/testing';
 import { BadRequestException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 
 // TDD Red — 아래 모듈은 미생성. import 오류 허용(contract 검증).
 // production 구현 시 경로 그대로 사용:
@@ -29,6 +37,7 @@ import { SocialProviderResolver } from './social/social-provider.resolver';
 import { AuthRepository } from './auth.repository';
 import { AuthService } from './auth.service';
 import { OAuthStateService } from './social/oauth-state.service';
+import { PrismaService } from '../../shared/prisma/prisma.service';
 
 // ─── Fixtures ───────────────────────────────────────────────────────────────
 
@@ -91,6 +100,12 @@ const makeMockOAuthStateService = () => ({
   consume: jest.fn(),
 });
 
+// v1.1.0/018 SC-010·011·020: 콜백을 실제 실행(fn())하여 내부 repo 호출이 유지되도록 한다.
+const makeMockPrismaService = () => ({
+  runInTransaction: jest.fn(async (fn: () => unknown) => fn()),
+  tx: {},
+});
+
 // ─── Tests ───────────────────────────────────────────────────────────────────
 
 describe('SocialAuthService', () => {
@@ -100,6 +115,7 @@ describe('SocialAuthService', () => {
   let mockAuthRepository: ReturnType<typeof makeMockAuthRepository>;
   let mockAuthService: ReturnType<typeof makeMockAuthService>;
   let mockOAuthStateService: ReturnType<typeof makeMockOAuthStateService>;
+  let mockPrismaService: ReturnType<typeof makeMockPrismaService>;
 
   beforeEach(async () => {
     mockSocialProviderResolver = makeMockSocialProviderResolver();
@@ -107,6 +123,7 @@ describe('SocialAuthService', () => {
     mockAuthRepository = makeMockAuthRepository();
     mockAuthService = makeMockAuthService();
     mockOAuthStateService = makeMockOAuthStateService();
+    mockPrismaService = makeMockPrismaService();
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -115,6 +132,7 @@ describe('SocialAuthService', () => {
         { provide: AuthRepository, useValue: mockAuthRepository },
         { provide: AuthService, useValue: mockAuthService },
         { provide: OAuthStateService, useValue: mockOAuthStateService },
+        { provide: PrismaService, useValue: mockPrismaService },
       ],
     }).compile();
 
@@ -321,6 +339,116 @@ describe('SocialAuthService', () => {
       providerId: newUserProfile.providerId,
       email: newUserProfile.email,
       name: newUserProfile.name,
+    });
+  });
+
+  // ── SC-010 (v1.1.0/018 spec, FR-005): path 3c 원자화 — 실패 시 롤백 ─────────
+  describe('SC-010 (v1.1.0/018 spec): path 3c 트랜잭션 원자화 — createSocialAccount 실패 시 롤백 (FR-005)', () => {
+    it('test_SC010_018_create_social_account_failure_rolls_back_transaction', async () => {
+      /**
+       * SC-010 (v1.1.0/018 spec): SocialAuthService.login() path 3c 테스트에서
+       * createSocialAccount 실패를 강제할 때, createUser 로 생성 시도된 사용자 행이
+       * 커밋되지 않고 트랜잭션 전체가 롤백됨을 검증한다.
+       *
+       * 검증 방법: PrismaService mock 의 runInTransaction 이 콜백을 실제 실행(fn())하므로,
+       * createSocialAccount 의 reject 가 runInTransaction 자체의 reject 로 그대로 전파된다
+       * (production: this.prisma.runInTransaction(async () => {...}) 콜백 내부 예외
+       * = $transaction 롤백과 논리 등가 — 인정되는 한계, research.md 참조).
+       * issueTokensForUser 미호출로 커밋 이후 흐름(토큰 발급)에 도달하지 않았음을 확인한다.
+       */
+      const newUserProfile = {
+        providerId: 'sc010-018-provider-id',
+        email: 'sc010-018@kakao.com',
+        name: 'SC010테스트',
+      };
+      const createdUser = {
+        id: 'user-sc010-018',
+        email: newUserProfile.email,
+        password: null,
+        name: newUserProfile.name,
+      };
+
+      mockSocialProviderResolver.resolve.mockReturnValue(mockSocialProviderPort);
+      mockSocialProviderPort.verify.mockResolvedValue(newUserProfile);
+      mockAuthRepository.findByProviderAndProviderId.mockResolvedValue(null);
+      mockAuthRepository.findUserByEmail.mockResolvedValue(null);
+      mockAuthRepository.createUser.mockResolvedValue(createdUser);
+      mockAuthRepository.createSocialAccount.mockRejectedValue(
+        new Error('createSocialAccount forced failure'),
+      );
+
+      await expect(service.login('kakao', 'token-sc010-018')).rejects.toThrow(
+        'createSocialAccount forced failure',
+      );
+
+      // runInTransaction 콜백을 통해 두 repo 호출이 시도됨(원자화 래핑 확인)
+      expect(mockPrismaService.runInTransaction).toHaveBeenCalledTimes(1);
+      expect(mockAuthRepository.createUser).toHaveBeenCalledTimes(1);
+      expect(mockAuthRepository.createSocialAccount).toHaveBeenCalledTimes(1);
+      // 커밋 이후 흐름(토큰 발급) 미도달 — 트랜잭션 실패로 롤백된 것과 논리 등가
+      expect(mockAuthService.issueTokensForUser).not.toHaveBeenCalled();
+    });
+  });
+
+  // ── SC-011 (v1.1.0/018 spec, FR-005): P2002 동시성 폴백 회귀 없음 ──────────
+  describe('SC-011 (v1.1.0/018 spec): P2002 동시성 폴백 — 트랜잭션 래핑 이후에도 회귀 없음 (FR-005)', () => {
+    it('test_SC011_018_p2002_race_fallback_returns_tokens_for_race_winner', async () => {
+      /**
+       * SC-011 (v1.1.0/018 spec): 기존 P2002 동시성 경합 폴백 로직(신규가입 레이스)이
+       * 트랜잭션 래핑 이후에도 회귀 없이 동일하게 동작한다. ADR-005 핵심 분기 —
+       * P2002 폴백 catch 는 runInTransaction **외부**에 유지되어, 롤백된 트랜잭션과
+       * 별개로 root 클라이언트로 findByProviderAndProviderId 를 재조회해 race 승자의
+       * 토큰을 반환해야 한다.
+       */
+      const raceProfile = {
+        providerId: 'sc011-018-provider-id',
+        email: 'sc011-018@kakao.com',
+        name: 'SC011테스트',
+      };
+      const createdUser = {
+        id: 'user-sc011-018',
+        email: raceProfile.email,
+        password: null,
+        name: raceProfile.name,
+      };
+      const raceWinnerUser = {
+        id: 'user-sc011-018-winner',
+        email: raceProfile.email,
+        password: null,
+        name: raceProfile.name,
+      };
+      const raceWinnerAccount = {
+        id: 'sa-sc011-018',
+        userId: raceWinnerUser.id,
+        provider: 'kakao',
+        providerId: raceProfile.providerId,
+        email: raceProfile.email,
+        name: raceProfile.name,
+        user: raceWinnerUser,
+      };
+
+      mockSocialProviderResolver.resolve.mockReturnValue(mockSocialProviderPort);
+      mockSocialProviderPort.verify.mockResolvedValue(raceProfile);
+      mockAuthRepository.findByProviderAndProviderId
+        .mockResolvedValueOnce(null) // 3a: 최초 조회 — 미존재(정상 3c 진입)
+        .mockResolvedValueOnce(raceWinnerAccount); // P2002 폴백 재조회 — race 승자 발견
+      mockAuthRepository.findUserByEmail.mockResolvedValue(null);
+      mockAuthRepository.createUser.mockResolvedValue(createdUser);
+      // instanceof Prisma.PrismaClientKnownRequestError 검사를 통과하려면 실제 생성자 필요
+      // (plain Error + code 속성으로는 검사 실패 — user.service.spec.ts 기존 패턴 준용).
+      const p2002Error = new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+        code: 'P2002',
+        clientVersion: '0.0.0',
+      });
+      mockAuthRepository.createSocialAccount.mockRejectedValue(p2002Error);
+
+      const result = await service.login('kakao', 'token-sc011-018');
+
+      expect(result).toEqual(TOKEN_RESULT);
+      expect(mockAuthService.issueTokensForUser).toHaveBeenCalledWith(raceWinnerUser);
+      // 폴백 재조회는 트랜잭션 외부(catch)에서 수행 — runInTransaction 은 원 시도 1회만
+      expect(mockPrismaService.runInTransaction).toHaveBeenCalledTimes(1);
+      expect(mockAuthRepository.findByProviderAndProviderId).toHaveBeenCalledTimes(2);
     });
   });
 });

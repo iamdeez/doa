@@ -23,6 +23,7 @@ import { StatsModule } from './modules/stats/stats.module';
 import { UserModule } from './modules/user/user.module';
 import { AppConfigModule } from './shared/config/config.module';
 import { PrismaModule } from './shared/prisma/prisma.module';
+import { SecurityModule } from './shared/security/security.module';
 
 @Module({
   imports: [
@@ -39,6 +40,7 @@ import { PrismaModule } from './shared/prisma/prisma.module';
     EventEmitterModule.forRoot(),
     PrismaModule,
     PgBossModule,
+    SecurityModule,
 
     // Core
     HealthModule,

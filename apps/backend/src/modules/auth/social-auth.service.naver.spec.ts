@@ -19,6 +19,11 @@
  * 4번째 인자가 추가되어 DI mock 을 등록한다. naver 는 state 검증이 verify 호출 이전에
  * 삽입되므로(tasks.md T005), 이 파일의 naver 케이스는 `consume` 을 true 로 고정해
  * 기존 계정해석 단언(SC-001/007~010, SEC-015-01)이 회귀 없이 유지되도록 한다.
+ *
+ * [§F 마이그레이션, v1.1.0/018 SC-011·020] SocialAuthService 생성자에 PrismaService
+ * 5번째 인자가 추가되어(path 3c 트랜잭션 원자화, FR-005) DI mock 을 등록한다.
+ * `runInTransaction: jest.fn(async (fn) => fn())` 로 콜백을 실제 실행하여 이 파일의
+ * SC-008(신규가입, path 3c 경유) 등 기존 단언이 회귀 없이 유지되도록 한다.
  */
 
 import { Test, TestingModule } from '@nestjs/testing';
@@ -28,6 +33,7 @@ import { SocialProviderResolver } from './social/social-provider.resolver';
 import { AuthRepository } from './auth.repository';
 import { AuthService } from './auth.service';
 import { OAuthStateService } from './social/oauth-state.service';
+import { PrismaService } from '../../shared/prisma/prisma.service';
 
 // ─── Fixtures ───────────────────────────────────────────────────────────────
 
@@ -81,6 +87,11 @@ const makeMockOAuthStateService = () => ({
   issue: jest.fn(),
   consume: jest.fn(),
 });
+// v1.1.0/018 SC-011·020: 콜백을 실제 실행(fn())하여 내부 repo 호출이 유지되도록 한다.
+const makeMockPrismaService = () => ({
+  runInTransaction: jest.fn(async (fn: () => unknown) => fn()),
+  tx: {},
+});
 
 // ─── Tests ───────────────────────────────────────────────────────────────────
 
@@ -91,6 +102,7 @@ describe('SocialAuthService — naver code-exchange 계정해석 (v1.1.0/015)', 
   let mockRepo: ReturnType<typeof makeMockAuthRepository>;
   let mockAuthService: ReturnType<typeof makeMockAuthService>;
   let mockOAuthStateService: ReturnType<typeof makeMockOAuthStateService>;
+  let mockPrismaService: ReturnType<typeof makeMockPrismaService>;
 
   beforeEach(async () => {
     mockResolver = makeMockSocialProviderResolver();
@@ -98,6 +110,7 @@ describe('SocialAuthService — naver code-exchange 계정해석 (v1.1.0/015)', 
     mockRepo = makeMockAuthRepository();
     mockAuthService = makeMockAuthService();
     mockOAuthStateService = makeMockOAuthStateService();
+    mockPrismaService = makeMockPrismaService();
     // 이 파일의 모든 케이스는 naver — state 검증(v1.1.0/016)은 항상 통과시켜
     // 계정해석 로직(ADR-003)만 격리 검증한다.
     mockOAuthStateService.consume.mockResolvedValue(true);
@@ -109,6 +122,7 @@ describe('SocialAuthService — naver code-exchange 계정해석 (v1.1.0/015)', 
         { provide: AuthRepository, useValue: mockRepo },
         { provide: AuthService, useValue: mockAuthService },
         { provide: OAuthStateService, useValue: mockOAuthStateService },
+        { provide: PrismaService, useValue: mockPrismaService },
       ],
     }).compile();
 

@@ -52,7 +52,9 @@ export class AuthRepository {
   }
 
   async revokeAllRefreshTokensByUser(userId: string): Promise<void> {
-    await this.prisma.refreshToken.updateMany({
+    // tx-aware: runInTransaction 콜백 내 호출 시 트랜잭션에 참여(FR-006). 콜백 밖에서는
+    // prisma.tx 가 root 를 반환하여 기존 동작과 동일(하위 호환).
+    await this.prisma.tx.refreshToken.updateMany({
       where: { userId, revoked: false },
       data: { revoked: true },
     });

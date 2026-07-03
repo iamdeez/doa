@@ -17,6 +17,8 @@ import {
 } from '../../shared/config/jwt.config';
 import { isAdminUserId } from '../../shared/auth/admin-ids';
 import { MailerPort } from '../../infrastructure/mail/mailer.port';
+import { PrismaService } from '../../shared/prisma/prisma.service';
+import { SecurityAuditLogger } from '../../shared/security/security-audit.logger';
 import { AuthRepository } from './auth.repository';
 import { OTP_LENGTH, OTP_MAX_ATTEMPTS, OTP_RESEND_WINDOW_SEC, OTP_TTL_MIN } from './auth.constants';
 import { maskEmail } from './auth.util';
@@ -65,6 +67,8 @@ export class AuthService {
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
     private readonly mailer: MailerPort,
+    private readonly prisma: PrismaService,
+    private readonly securityAuditLogger: SecurityAuditLogger,
   ) {}
 
   // ──────────────────────────────────────────────
@@ -237,8 +241,8 @@ export class AuthService {
 
   // ──────────────────────────────────────────────
   // resetPassword — OTP 검증 + 비밀번호 변경
-  // 원자성: markOtpConsumed 내부에서 비밀번호 업데이트 + OTP 소비를 단일 트랜잭션으로 처리.
-  // 세션 전체 폐기는 별도 호출 (OTP 소비 이후 best-effort).
+  // 원자성(FR-006/ADR-006): 비밀번호 업데이트 + OTP 소비 + 세션 전체 폐기를 단일
+  // runInTransaction 으로 통합 — 어느 한쪽이 실패해도 전체 롤백된다.
   // ──────────────────────────────────────────────
 
   async resetPassword(email: string, otp: string, newPassword: string): Promise<void> {
@@ -255,6 +259,7 @@ export class AuthService {
       throw new BadRequestException('OTP expired');
     }
     if (record.otpHash !== otpHash) {
+      this.securityAuditLogger.otpVerificationFailed(email);
       // 시도 횟수 증가 후 최대 도달 시 OTP 무효화 (SEC-001 브루트포스 차단)
       const updated = await this.authRepository.incrementOtpAttempts(record.id);
       if (updated.attempts >= OTP_MAX_ATTEMPTS) {
@@ -271,13 +276,16 @@ export class AuthService {
 
     const hashedPassword = await bcrypt.hash(newPassword, BCRYPT_SALT_ROUNDS);
 
-    // 비밀번호 업데이트 + OTP 소비 (repository 내부 트랜잭션으로 원자 처리)
-    await this.authRepository.markOtpConsumed(record.id, {
-      userId: user.id,
-      hashedPassword,
+    // 비밀번호 업데이트 + OTP 소비 + 세션 전체 폐기 — 단일 트랜잭션(FR-006).
+    // markOtpConsumed 내부 runInTransaction 은 재진입 안전(PrismaService.runInTransaction)하므로
+    // 이 외부 tx 를 재사용한다(중첩 $transaction 없음).
+    await this.prisma.runInTransaction(async () => {
+      await this.authRepository.markOtpConsumed(record.id, {
+        userId: user.id,
+        hashedPassword,
+      });
+      await this.authRepository.revokeAllRefreshTokensByUser(user.id);
     });
-    // 세션 전체 폐기
-    await this.authRepository.revokeAllRefreshTokensByUser(user.id);
   }
 
   // ──────────────────────────────────────────────
@@ -289,6 +297,7 @@ export class AuthService {
     if (!user) {
       throw new NotFoundException('No account found for this phone number');
     }
+    this.securityAuditLogger.findEmailAccessed(phone, user.email);
     return { email: maskEmail(user.email) };
   }
 

@@ -12,6 +12,13 @@
  *   - signAsync 호출 인자(expiresIn)를 정확히 검증한다.
  *   - getProfile isAdmin 테스트 시 process.env['ADMIN_USER_IDS'] 를 설정·복원한다.
  *   - MailerPort mock: sendOtpEmail 부수효과 검증용.
+ *
+ * [§F 마이그레이션, v1.1.0/018 spec — SC-012·014·016·017·020] AuthService 생성자에
+ * PrismaService·SecurityAuditLogger 2개 인자가 추가되어(총 6인자) DI mock 을 등록한다.
+ * `runInTransaction: jest.fn(async (fn) => fn())` 로 콜백을 실제 실행하여 resetPassword
+ * 내부 두 repo 호출이 기존과 동일하게 유지되도록 한다(Test Authoring Contract canonical).
+ * SC-012(동일 tx 경계)·SC-014(OTP 실패 감사로그)·SC-016(find-email 감사로그)·
+ * SC-017(best-effort 원 응답 불변)은 파일 하단에 신규 추가한다.
  */
 
 import { Test, TestingModule } from '@nestjs/testing';
@@ -25,12 +32,15 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
+import { PinoLogger } from 'nestjs-pino';
 import * as bcrypt from 'bcrypt';
 
 import { AuthService } from './auth.service';
 import { AuthRepository } from './auth.repository';
 // MailerPort: apps/backend/src/infrastructure/mail/mailer.port.ts (구현 완료 시 존재)
 import { MailerPort } from '../../infrastructure/mail/mailer.port';
+import { PrismaService } from '../../shared/prisma/prisma.service';
+import { SecurityAuditLogger } from '../../shared/security/security-audit.logger';
 
 // ─────────────────────────────────────────────
 // 상수 (plan.md·tasks.md T-B1 상수화 원칙 — 매직넘버 금지)
@@ -61,6 +71,20 @@ const mockAuthRepository = {
 
 const mockMailerPort = {
   sendOtpEmail: jest.fn(),
+};
+
+// v1.1.0/018 SC-012·020: 콜백을 실제 실행(fn())하여 resetPassword 내부 두 repo 호출이
+// 기존과 동일하게 유지되도록 한다(Test Authoring Contract canonical).
+const mockPrismaService = {
+  runInTransaction: jest.fn(async (fn: () => unknown) => fn()),
+  tx: {},
+};
+
+// v1.1.0/018 SC-014·016·017: best-effort 감사 로거 — 호출 여부·인자만 spy.
+const mockSecurityAuditLogger = {
+  otpVerificationFailed: jest.fn(),
+  rateLimitExceeded: jest.fn(),
+  findEmailAccessed: jest.fn(),
 };
 
 const mockJwtService = {
@@ -136,6 +160,8 @@ describe('AuthService', () => {
         { provide: JwtService, useValue: mockJwtService },
         { provide: ConfigService, useValue: mockConfigService },
         { provide: MailerPort, useValue: mockMailerPort },
+        { provide: PrismaService, useValue: mockPrismaService },
+        { provide: SecurityAuditLogger, useValue: mockSecurityAuditLogger },
       ],
     }).compile();
 
@@ -718,6 +744,174 @@ describe('AuthService', () => {
 
       // null 가드가 bcrypt.compare 이전에 작동해야 한다
       expect(bcryptSpy).not.toHaveBeenCalled();
+    });
+  });
+
+  // ── SC-012 (v1.1.0/018 spec, FR-006): revoke 가 markOtpConsumed 와 동일 tx ─
+  describe('SC-012 (v1.1.0/018 spec): revoke 가 markOtpConsumed 와 동일 트랜잭션 컨텍스트 내에서 실행 (FR-006)', () => {
+    it('test_SC012_018_reset_password_wraps_markOtpConsumed_and_revoke_in_single_transaction', async () => {
+      /**
+       * SC-012 (v1.1.0/018 spec): resetPassword() 실행 시 revokeAllRefreshTokensByUser
+       * 호출이 markOtpConsumed 와 동일 트랜잭션 컨텍스트 내에서 실행됨을 검증한다
+       * (트랜잭션 경계 mock/spy 단언). PrismaService mock 의 runInTransaction 이
+       * 콜백을 실제 실행(fn())하므로, 두 repo 호출의 invocationCallOrder 로
+       * "runInTransaction 진입 이후에 두 호출이 순서대로 발생"함을 확인한다.
+       */
+      const crypto = require('crypto');
+      const PLAIN_OTP = '111111';
+      const hash = crypto.createHash('sha256').update(PLAIN_OTP).digest('hex');
+
+      mockAuthRepository.findUserByEmail.mockResolvedValue(FIXED_USER);
+      mockAuthRepository.findLatestOtpByEmail.mockResolvedValue(
+        makeOtpRecord({ otpHash: hash }),
+      );
+      mockAuthRepository.markOtpConsumed.mockResolvedValue(undefined);
+      mockAuthRepository.revokeAllRefreshTokensByUser.mockResolvedValue(undefined);
+      jest.spyOn(bcrypt, 'hash').mockImplementation(() => Promise.resolve('$2b$10$newHash'));
+
+      await service.resetPassword(FIXED_USER.email, PLAIN_OTP, 'NewPassword123!');
+
+      // runInTransaction 1회, 내부에서 두 repo 호출 각 1회(원자화 경계 — SC-020 회귀축)
+      expect(mockPrismaService.runInTransaction).toHaveBeenCalledTimes(1);
+      expect(mockAuthRepository.markOtpConsumed).toHaveBeenCalledTimes(1);
+      expect(mockAuthRepository.revokeAllRefreshTokensByUser).toHaveBeenCalledTimes(1);
+
+      // 경계 단언: 두 repo 호출 모두 runInTransaction 진입 이후 순서대로 발생
+      const txOrder = mockPrismaService.runInTransaction.mock.invocationCallOrder[0];
+      const markOrder = mockAuthRepository.markOtpConsumed.mock.invocationCallOrder[0];
+      const revokeOrder =
+        mockAuthRepository.revokeAllRefreshTokensByUser.mock.invocationCallOrder[0];
+
+      expect(markOrder).toBeGreaterThan(txOrder);
+      expect(revokeOrder).toBeGreaterThan(markOrder);
+    });
+  });
+
+  // ── SC-014 (v1.1.0/018 spec, FR-007): OTP 불일치 시 감사 로거 wiring ────────
+  describe('SC-014 (v1.1.0/018 spec): OTP 불일치 시 securityAuditLogger.otpVerificationFailed 1회 (FR-007)', () => {
+    it('test_SC014_018_otp_mismatch_calls_security_audit_logger_once', async () => {
+      /**
+       * SC-014 (v1.1.0/018 spec): OTP 값 불일치 시 WARN 수준 로그가 1건 기록되고
+       * 로그 메시지에 이메일이 마스킹된 형태로 포함됨을 검증한다 — 이 파일에서는
+       * wiring(호출 여부·인자)만 검증하고, 마스킹 자체는 T016
+       * security-audit.logger.spec.ts 에서 검증한다.
+       */
+      mockAuthRepository.findUserByEmail.mockResolvedValue(FIXED_USER);
+      mockAuthRepository.findLatestOtpByEmail.mockResolvedValue(
+        makeOtpRecord({ otpHash: 'correcthash-not-matching' }),
+      );
+      mockAuthRepository.incrementOtpAttempts.mockResolvedValue(makeOtpRecord({ attempts: 1 }));
+
+      await expect(
+        service.resetPassword(FIXED_USER.email, '999999', 'anyPass'),
+      ).rejects.toThrow(BadRequestException);
+
+      expect(mockSecurityAuditLogger.otpVerificationFailed).toHaveBeenCalledTimes(1);
+      expect(mockSecurityAuditLogger.otpVerificationFailed).toHaveBeenCalledWith(
+        FIXED_USER.email,
+      );
+    });
+  });
+
+  // ── SC-016 (v1.1.0/018 spec, FR-009): find-email 시 감사 로거 wiring ────────
+  describe('SC-016 (v1.1.0/018 spec): find-email 호출 시 securityAuditLogger.findEmailAccessed 1회 (FR-009)', () => {
+    it('test_SC016_018_find_email_calls_security_audit_logger_once', async () => {
+      /**
+       * SC-016 (v1.1.0/018 spec): find-email 호출 시 WARN 수준 로그가 1건
+       * 기록되고 조회 전화번호·반환 이메일이 마스킹된 형태로 포함됨을 검증한다 —
+       * 이 파일에서는 wiring(호출 여부·인자)만 검증한다(마스킹은 T016 담당).
+       */
+      mockAuthRepository.findFirstUserByPhone.mockResolvedValue(FIXED_USER);
+
+      const result = await service.findEmail(FIXED_USER.phone!);
+
+      expect(result.email).toBe('te**@example.com');
+      expect(mockSecurityAuditLogger.findEmailAccessed).toHaveBeenCalledTimes(1);
+      expect(mockSecurityAuditLogger.findEmailAccessed).toHaveBeenCalledWith(
+        FIXED_USER.phone,
+        FIXED_USER.email,
+      );
+    });
+  });
+
+  // ── SC-017 (v1.1.0/018 spec, FR-010): PinoLogger.warn throw 해도 원 응답 불변 ──
+  describe('SC-017 (v1.1.0/018 spec): PinoLogger.warn throw 해도 원 응답 불변 (FR-010, best-effort)', () => {
+    /**
+     * GAP-018-02 정정 (5b [B] 판정 반영): plan.md 테스트 전략표(SC-017 행)의
+     * Input 은 `PinoLogger.warn` throw mock 이다 — `SecurityAuditLogger` 자체는
+     * 내부 try/catch(security-audit.logger.ts) 로 이 예외를 항상 삼키므로,
+     * `SecurityAuditLogger` 인스턴스가 throw 하는 것은 production 에서 도달
+     * 불가능한 분기다(ADR-007, call-site 중복 방어 배제). 이전 판(2건)은
+     * `SecurityAuditLogger` 전체를 mock 하여 그 보장을 무력화한 뒤 단언하는
+     * 전제 조건 오류였다 — 여기서는 **실제 `SecurityAuditLogger` 인스턴스**를
+     * `PinoLogger.warn` throw mock 과 함께 구성해 plan.md Input 과 정확히
+     * 일치하는 end-to-end wiring 시나리오로 재작성한다. 로거 계층 자체의
+     * best-effort 보장은 `security-audit.logger.spec.ts`(SC-017, 3건)가 이미
+     * 커버하며, 이 describe 는 AuthService 콜사이트까지 포함한 wiring 을
+     * 추가로 검증한다(상호보완, 중복 아님).
+     */
+    let realSecurityAuditLogger: SecurityAuditLogger;
+    let mockPinoLogger: { warn: jest.Mock; setContext: jest.Mock };
+    let serviceWithRealLogger: AuthService;
+
+    beforeEach(async () => {
+      mockPinoLogger = {
+        warn: jest.fn(() => {
+          throw new Error('pino transport failure (SC-017 e2e-style unit)');
+        }),
+        setContext: jest.fn(),
+      };
+      realSecurityAuditLogger = new SecurityAuditLogger(mockPinoLogger as unknown as PinoLogger);
+
+      const module: TestingModule = await Test.createTestingModule({
+        providers: [
+          AuthService,
+          { provide: AuthRepository, useValue: mockAuthRepository },
+          { provide: JwtService, useValue: mockJwtService },
+          { provide: ConfigService, useValue: mockConfigService },
+          { provide: MailerPort, useValue: mockMailerPort },
+          { provide: PrismaService, useValue: mockPrismaService },
+          { provide: SecurityAuditLogger, useValue: realSecurityAuditLogger },
+        ],
+      }).compile();
+
+      serviceWithRealLogger = module.get<AuthService>(AuthService);
+    });
+
+    it('test_SC017_018_reset_password_otp_mismatch_unaffected_by_logger_throw', async () => {
+      /**
+       * SC-017 (v1.1.0/018 spec): `PinoLogger.warn` 이 예외를 던지도록 mock
+       * 하더라도(실제 `SecurityAuditLogger` 인스턴스 경유) OTP 검증 처리의
+       * 원 응답(상태코드·바디)이 로깅 미적용 시와 동일하게 유지되어야 한다
+       * (FR-010 — 로깅은 원 요청 흐름을 차단하지 않는다).
+       */
+      mockAuthRepository.findUserByEmail.mockResolvedValue(FIXED_USER);
+      mockAuthRepository.findLatestOtpByEmail.mockResolvedValue(
+        makeOtpRecord({ otpHash: 'correcthash-not-matching' }),
+      );
+      mockAuthRepository.incrementOtpAttempts.mockResolvedValue(makeOtpRecord({ attempts: 1 }));
+
+      // 원 응답(BadRequestException — OTP 불일치)이 로깅 실패와 무관하게 유지되어야 함
+      await expect(
+        serviceWithRealLogger.resetPassword(FIXED_USER.email, '999999', 'anyPass'),
+      ).rejects.toThrow(BadRequestException);
+
+      // 로거 wiring 자체는 실제 호출되었음을 확인(로깅 시도가 실제로 일어났는지)
+      expect(mockPinoLogger.warn).toHaveBeenCalledTimes(1);
+    });
+
+    it('test_SC017_018_find_email_unaffected_by_logger_throw', async () => {
+      /**
+       * SC-017 보조 (v1.1.0/018 spec): find-email 원 응답(마스킹 이메일)이
+       * `PinoLogger.warn` 의 throw(실제 `SecurityAuditLogger` 인스턴스 경유)와
+       * 무관하게 유지되어야 한다.
+       */
+      mockAuthRepository.findFirstUserByPhone.mockResolvedValue(FIXED_USER);
+
+      const result = await serviceWithRealLogger.findEmail(FIXED_USER.phone!);
+
+      expect(result.email).toBe('te**@example.com');
+      expect(mockPinoLogger.warn).toHaveBeenCalledTimes(1);
     });
   });
 });

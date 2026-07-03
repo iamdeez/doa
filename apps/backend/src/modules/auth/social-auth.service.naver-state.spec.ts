@@ -10,6 +10,11 @@
  * state 검증은 `resolver.resolve` 직후·`verify` 호출 **이전**에 naver 한정으로
  * 삽입된다(tasks.md T005). 검증 실패 시 verify 는 호출되지 않고 즉시 401
  * (UnauthorizedException). kakao/google 은 이 분기 자체에 진입하지 않는다(FR-006).
+ *
+ * [§F 마이그레이션, v1.1.0/018 SC-011·020] SocialAuthService 생성자에 PrismaService
+ * 5번째 인자가 추가되어(path 3c 트랜잭션 원자화, FR-005) DI mock 을 등록한다. state 검증
+ * 케이스는 트랜잭션 진입 이전(3a/verify 이전)에 분기되므로 runInTransaction 은 호출되지
+ * 않으나 DI 해석을 위해 mock 등록이 필요하다.
  */
 
 import { Test, TestingModule } from '@nestjs/testing';
@@ -19,6 +24,7 @@ import { SocialProviderResolver } from './social/social-provider.resolver';
 import { AuthRepository } from './auth.repository';
 import { AuthService } from './auth.service';
 import { OAuthStateService } from './social/oauth-state.service';
+import { PrismaService } from '../../shared/prisma/prisma.service';
 
 // ─── Fixtures ───────────────────────────────────────────────────────────────
 
@@ -75,6 +81,11 @@ const makeMockOAuthStateService = () => ({
   issue: jest.fn(),
   consume: jest.fn(),
 });
+// v1.1.0/018 SC-011·020: 콜백을 실제 실행(fn())하여 내부 repo 호출이 유지되도록 한다.
+const makeMockPrismaService = () => ({
+  runInTransaction: jest.fn(async (fn: () => unknown) => fn()),
+  tx: {},
+});
 
 // ─── Tests ───────────────────────────────────────────────────────────────────
 
@@ -85,6 +96,7 @@ describe('SocialAuthService — naver state(CSRF) 검증 (v1.1.0/016)', () => {
   let mockRepo: ReturnType<typeof makeMockAuthRepository>;
   let mockAuthService: ReturnType<typeof makeMockAuthService>;
   let mockOAuthStateService: ReturnType<typeof makeMockOAuthStateService>;
+  let mockPrismaService: ReturnType<typeof makeMockPrismaService>;
 
   beforeEach(async () => {
     mockResolver = makeMockSocialProviderResolver();
@@ -92,6 +104,7 @@ describe('SocialAuthService — naver state(CSRF) 검증 (v1.1.0/016)', () => {
     mockRepo = makeMockAuthRepository();
     mockAuthService = makeMockAuthService();
     mockOAuthStateService = makeMockOAuthStateService();
+    mockPrismaService = makeMockPrismaService();
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -100,6 +113,7 @@ describe('SocialAuthService — naver state(CSRF) 검증 (v1.1.0/016)', () => {
         { provide: AuthRepository, useValue: mockRepo },
         { provide: AuthService, useValue: mockAuthService },
         { provide: OAuthStateService, useValue: mockOAuthStateService },
+        { provide: PrismaService, useValue: mockPrismaService },
       ],
     }).compile();
 

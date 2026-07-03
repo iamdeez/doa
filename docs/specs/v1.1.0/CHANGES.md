@@ -1,3 +1,91 @@
+## [018-auth-security-hardening] 구현 완료
+
+> v1.1.0 의 열여덟 번째 차수 — **`context.md §6` 에 013~016 스펙의 Security Agent 감사가
+> Medium/Low 취약점으로 판정하여 "후속 위임(Retrospective)"으로 누적시킨 auth 도메인 보안 부채
+> 4건(SEC-002~004 계열, GAP-013-09~11·GAP-014-01·GAP-014-06)을 하나의 보안 하드닝 릴리즈로
+> 해소**: (1) 트랙 1 — `@nestjs/throttler` 전역 rate limit 도입(FR-001~003, NFR-001~006):
+> 전역 기본 IP당 20회/60초 + 고위험 5개 엔드포인트(`social-login` 10·`naver/state` 20·
+> `forgot-password` 5·`find-email` 5·`reset-password` 10) 개별 override, `GET /health` 는
+> `@SkipThrottle()` 로 예외. (2) 트랙 2 — Fly.io 프록시 실 클라이언트 IP 식별(FR-004,
+> NFR-008): `main.ts` `app.set('trust proxy', 1)` + `FlyThrottlerGuard.getTracker`
+> (`Fly-Client-IP`→`X-Forwarded-For`→`req.ip` 폴백). (3) 트랙 3 — 소셜 신규가입 path 3c
+> 원자화(FR-005): `SocialAuthService.login()` 의 `createUser`+`createSocialAccount` 를
+> `runInTransaction` 으로 래핑(P2002 동시성 폴백 catch 는 트랜잭션 외부 유지, SC-011 회귀 방지).
+> (4) 트랙 4 — 비밀번호 재설정 세션 폐기 원자화(FR-006): `revokeAllRefreshTokensByUser` 를
+> tx-aware(`prisma.tx`)로 전환 후 `markOtpConsumed` 와 단일 `runInTransaction` 으로 통합.
+> (5) 트랙 5 — 보안 감사 로그 3종(FR-007~010, NFR-009): 신규 `SecurityAuditLogger`
+> (`otpVerificationFailed`·`rateLimitExceeded`·`findEmailAccessed`, 전 메서드 best-effort
+> try/catch)·신규 `maskPhone` 유틸(뒤 4자리만 노출).
+>
+> base `b3f427d`(017 완료 커밋) → working tree(미커밋, 무관 chore 혼재 없음 — clean base).
+> 변경 추적: `git diff b3f427d -- apps/backend`(tracked 17 files, +529/-25) + `pnpm-lock.yaml`
+> (+16, `@nestjs/throttler` 락). 신규(untracked) 파일 12건(`shared/security/` 8개 828줄 +
+> e2e/static 테스트 4개 464줄, 총 12개 994줄)은 git add 후 별도 커밋에 포함 예정.
+> **신규 npm 의존 1건**(`@nestjs/throttler` ^6.5.0, 인-메모리 스토리지 — NFR-007/P-003 준수,
+> Redis 등 외부 저장소 미도입). **신규 Prisma 마이그레이션 없음**(데이터 모델 변경 없음, 트랜잭션
+> 경계 조정만). 선택 단계: Database Design Agent·Deploy Agent·Performance Agent 비활성
+> (selection-phases.md N — 스키마/배포구성/성능수치NFR 없음). **Security Agent 는 Y 판정으로
+> 본 Docs 단계 다음 활성 실행 예정**(spec 자체가 auth 보안 하드닝이며 선행 미해소 보안 부채
+> 재감사가 목적 — 신규 rate limit 가드의 XFF 스푸핑 표면, 트랜잭션 경계, 감사 로그 PII 마스킹
+> 완결성 검토).
+
+**변경 파일**:
+
+백엔드 — 신규 (`shared/security/` 공통 인프라 모듈):
+- `apps/backend/src/shared/security/throttle.constants.ts` (25줄): rate limit 임계값 상수 6종(`THROTTLE_TTL_MS`=60_000ms·`THROTTLE_DEFAULT_LIMIT`=20·`THROTTLE_SOCIAL_LOGIN_LIMIT`=10·`THROTTLE_NAVER_STATE_LIMIT`=20·`THROTTLE_FORGOT_PASSWORD_LIMIT`=5·`THROTTLE_FIND_EMAIL_LIMIT`=5·`THROTTLE_RESET_PASSWORD_LIMIT`=10) 단일 소스
+- `apps/backend/src/shared/security/client-ip.util.ts` (31줄): `resolveClientIp()` — `Fly-Client-IP`→`X-Forwarded-For`[0]→`req.ip` 폴백 순수 함수(throttler 라이브러리 미의존 테스트 seam)
+- `apps/backend/src/shared/security/fly-throttler.guard.ts` (45줄): `FlyThrottlerGuard extends ThrottlerGuard` — `getTracker`(resolveClientIp 위임)·`throwThrottlingException`(WARN 로깅 후 super 호출)
+- `apps/backend/src/shared/security/security-audit.logger.ts` (47줄): `SecurityAuditLogger`(PinoLogger 래퍼) — `otpVerificationFailed`·`rateLimitExceeded`·`findEmailAccessed` 3종, 전 메서드 best-effort try/catch(FR-010)
+- `apps/backend/src/shared/security/security.module.ts` (27줄): `ThrottlerModule.forRoot` + `APP_GUARD`(FlyThrottlerGuard) + `SecurityAuditLogger` provide/export
+- `apps/backend/src/shared/security/client-ip.util.spec.ts` (117줄, SC-009)
+- `apps/backend/src/shared/security/security-audit.logger.spec.ts` (184줄, SC-014·015·016·017·019)
+- `apps/backend/src/shared/security/throttler-exception.spec.ts` (54줄, SC-007)
+
+백엔드 — 신규 (테스트):
+- `apps/backend/test/rate-limit.e2e-spec.ts` (201줄, SC-001~006): 전역/라우트별 429 통합 검증
+- `apps/backend/test/auth-reset-atomicity.e2e-spec.ts` (144줄, SC-013): revoke 실패 시 비밀번호 변경 롤백 검증
+- `apps/backend/test/static/rate-limit-trust-proxy.spec.ts` (48줄, SC-008): trust proxy·tracker 정적 검증
+- `apps/backend/test/static/rate-limit-no-redis.spec.ts` (71줄, SC-018): `package.json` 신규 캐시/저장소 의존 0건 정적 검증
+
+백엔드 — 수정:
+- `apps/backend/package.json` (+1): `@nestjs/throttler` ^6.5.0 신규 의존
+- `apps/backend/src/app.module.ts` (+2): `SecurityModule` 임포트(전역 가드 활성)
+- `apps/backend/src/health/health.controller.ts` (+2): `GET /health` 에 `@SkipThrottle()` (Fly 헬스체크 폴링 보호)
+- `apps/backend/src/main.ts` (+7/-1): `NestExpressApplication` 타입 지정 + `app.set('trust proxy', 1)`(ADR-004, Fly 엣지 첫 홉 신뢰)
+- `apps/backend/src/modules/auth/auth.controller.ts` (+14): 5개 라우트(`social-login`·`naver/state`·`forgot-password`·`reset-password`·`find-email`)에 `@Throttle({ default: { ttl, limit } })` 데코레이터 부착
+- `apps/backend/src/modules/auth/auth.module.ts` (+2): `SecurityModule` 임포트
+- `apps/backend/src/modules/auth/auth.repository.ts` (+3/-1): `revokeAllRefreshTokensByUser` 를 `this.prisma.refreshToken`(root) → `this.prisma.tx.refreshToken`(tx-aware) 전환
+- `apps/backend/src/modules/auth/auth.service.ts` (+25/-소량): `resetPassword` 의 `markOtpConsumed`+`revokeAllRefreshTokensByUser` 를 단일 `runInTransaction` 으로 통합, OTP 불일치/find-email 호출부에 `SecurityAuditLogger` 연동, 생성자에 `PrismaService`+`SecurityAuditLogger` 추가 주입(하위 호환 — 시그니처·반환형·예외 계약 불변)
+- `apps/backend/src/modules/auth/auth.util.ts` (+13): `maskPhone(phone)` 신규(뒤 4자리만 노출, NFR-009)
+- `apps/backend/src/modules/auth/social-auth.service.ts` (+34/-25): `login()` path 3c(`createUser`+`createSocialAccount`)를 `PrismaService.runInTransaction` 으로 래핑, 생성자에 `PrismaService` 추가 주입, P2002 폴백 catch 는 트랜잭션 외부 유지(SC-011 회귀 방지)
+- `apps/backend/src/modules/auth/auth.service.spec.ts` (+194): SC-012·014·016·017 신규 + GAP-018-02 정정([재작업] SC-017 wiring 2건을 실 `SecurityAuditLogger`+`PinoLogger.warn` throw mock 조합으로 재작성)
+- `apps/backend/src/modules/auth/auth.util.spec.ts` (+72): `maskPhone` 테스트
+- `apps/backend/src/modules/auth/social-auth.service.spec.ts` (+128, SC-010·011) 및 `social-auth.service.{autolink-policy,naver-autolink-exclusion,naver-state,naver}.spec.ts` (각 +14): `PrismaService` mock 추가에 따른 기존 선행(013·014·015·016) 테스트 셋업 갱신(회귀 방지)
+- `pnpm-lock.yaml` (+16): `@nestjs/throttler` 락 반영
+
+산출물 문서(참조, 코드 아님):
+- `docs/specs/v1.1.0/018-auth-security-hardening/{spec,planning,design,test}/*.md`: spec.md·plan.md·research.md·tasks.md·test-cases.md·coverage.md·coverage-gap.md·test-report.md·gaps.md·assumptions.md·spec-input.md·selection-phases.md (파이프라인 표준 산출물)
+
+**검증** (5b Test Agent EXECUTION [재작업 재검증], coverage.md v1.2/test-report.md v1.1 기준):
+- 백엔드 전체: `pnpm --filter backend typecheck` 0 error, unit **39 suites/397 tests 전건 PASS**(회귀 0), static(rate-limit-trust-proxy·rate-limit-no-redis) 2 suites/4 tests PASS, e2e(rate-limit·auth-reset-atomicity, 옵션 A — 로컬 docker-compose PostgreSQL) 2 suites/7 tests PASS
+- SC-001~020 **전건 PASS(20/20)**. deferred 없음(옵션 A 로 통합 SC 전건 in-pipeline 실행)
+- 설계 문서(plan.md ADR-001~010) 정합성 불일치 0건
+- STALE_SC 0건(PATCH-A18 전수 재검증 — 변경/신규 14개 spec 파일, 018 범위 밖 SC 인용은 전건 `(vX.Y.Z/NNN spec)` 출처 주석 보유)
+
+**해결된 GAP**: GAP-018-02([B] 테스트 오류 — `auth.service.spec.ts` SC-017 wiring 2건이 `SecurityAuditLogger` 전체 mock 으로 production 도달 불가능 분기를 전제, plan.md Input 정합 방식으로 재작성하여 RESOLVED. production 코드 변경 없음).
+
+**미해결 GAP / 후속 단계 위임** (Retrospective Agent 위임 / Security Agent 후속 판정 대상):
+- **Security Agent 감사 (필수, 미실행)**: selection-phases.md Y 판정(spec 자체가 auth 보안 하드닝). 신규 rate limit 가드·트랜잭션 경계 확장·감사 로그 3종의 최소권한/인가 축 재감사, GAP-018-01(trust proxy 설정)의 XFF 스푸핑 표면(ADR-004 "첫 홉만 신뢰"의 실제 배포 검증) 포함. 본 Docs 단계 다음으로 이어질 단계.
+- **Deploy Agent·Performance Agent·Database Design Agent**: selection-phases.md N 판정(배포구성/성능수치NFR/스키마 변경 없음) — 본 spec 에서는 비활성.
+- **GAP-018-01 (OPEN, 문서-갱신-필요, Spec Agent 등록·Design Agent 코드 지점 확정·Docs Agent 코드 검증 완료)**: `infra.md` §2(인프라 토폴로지)·§8(알려진 인프라 제약)에 Fly.io 클라이언트 IP 전달 방식(`Fly-Client-IP`/`X-Forwarded-For` 헤더, `trust proxy` 설정 필요성)이 미기재. 코드 검증 완료 — `apps/backend/src/main.ts:11` `app.set('trust proxy', 1)`, `apps/backend/src/shared/security/client-ip.util.ts:7-31` `resolveClientIp` (Fly-Client-IP→XFF→req.ip 폴백) 실재 확인. `grep -n "trust proxy\|Fly-Client-IP\|X-Forwarded-For" .claude/docs/infra.md` 결과 0건(PATCH-A13 cross-check, 신규 도입 케이스 — 기존 표기 불일치 아님). Docs Agent 직접 수정 불가(agent-rules.md §3.1) — Retrospective Agent 위임.
+- **GAP-018-03 (신규, 문서-갱신-필요, Docs Agent 발견)**: `context.md §6` "알려진 제약 및 기술 부채" 표의 4개 행 — 소셜 신규가입 경로 orphan user 위험(SEC-002/GAP-014-01)·소셜 로그인 아웃바운드 rate limit 부재(SEC-004/GAP-014-06)·auth reset-password IP rate limit 부재(SEC-002/GAP-013-09)·resetPassword refresh token revoke 비원자(SEC-003/GAP-013-10)·auth 보안 감사 로그 부재(SEC-004/GAP-013-11) — 가 본 spec(018)으로 전부 RESOLVED 되었다. 코드 검증: `apps/backend/src/modules/auth/social-auth.service.ts`(runInTransaction 래핑 확인)·`apps/backend/src/modules/auth/auth.service.ts`(단일 트랜잭션 통합·SecurityAuditLogger 호출 확인)·`apps/backend/src/shared/security/`(신규 rate limit 인프라 확인). `context.md §7` 갱신 이력에 018 항목 추가 및 §1 "현재 버전" 필드 갱신도 함께 필요. Docs Agent 직접 수정 불가 — Retrospective Agent 위임.
+
+**후속 작업 시 주의사항**:
+- **console/Flutter 클라이언트의 `429` 응답 UX 미처리**: 본 spec 은 서버 측 rate limit 만 구현했다. 클라이언트가 `429` 응답에 대한 재시도 안내·오류 메시지를 아직 처리하지 않으므로, 향후 UX 개선이 필요하면 별도 spec 으로 진행한다(spec.md "범위 외" 참조).
+- **다중 인스턴스 확장 시 rate limit 상태 미공유**: 현재 인-메모리 스토리지(NFR-007)로 단일 Fly.io 인스턴스에서만 정확하다. 향후 다중 인스턴스로 확장 시 분산 스토리지 재검토가 필요하다(별도 spec 대상).
+- **PROC-014 사후 운영 검증 4개 시나리오 (범위 외, 운영 배포 이후 수행)**: Fly.io 실제 프록시 헤더 동작 확인·정상 사용자 429 오탐 여부·소셜 신규가입 동시성 부하 시나리오·보안 감사 로그 볼륨/노이즈(spec.md "사후 운영 검증 피드백 사이클" 참조). 결함 발견 시 spec.md "배경 및 목적" 절 입력 또는 별도 patch spec 으로 처리.
+- **Security Agent 완료 후 최종 gate 확정**: 본 spec 은 6단계(Docs) 완료 시점 기준이며, rate limit 가드·트랜잭션 경계·감사 로그의 최종 보안 판정은 후속 Security Agent 단계에서 확정된다.
+
 ## [017-seller-admin-read-apis] 구현 완료
 
 > v1.1.0 의 열일곱 번째 차수 — **console 실통합 중 발견된 백엔드 계약 갭(BE-GAP-002~007) 6건 해소**:

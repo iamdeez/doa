@@ -42,6 +42,8 @@
  (도메인별 스키마) (egress 무료)     (무거운 잡 전용)
 ```
 
+> **클라이언트 IP 전달**: Fly.io 엣지 프록시가 `Fly-Client-IP`(및 표준 `X-Forwarded-For`) 헤더로 실 클라이언트 IP 를 전달한다. backend 는 `main.ts` `app.set('trust proxy', 1)`(첫 홉만 신뢰) + `shared/security/client-ip.util.ts` `resolveClientIp`(Fly-Client-IP→XFF→req.ip 폴백)로 rate limit 트래킹 IP 를 식별한다(018). `trust proxy` 미설정 시 `req.ip` 가 프록시 연결 IP 단일 버킷으로 집계되어 rate limit 이 무력화된다.
+
 ### 컴포넌트 목록
 
 | 컴포넌트 | 유형 | 역할 | 환경 |
@@ -207,6 +209,7 @@ pnpm --filter backend test:e2e
 | AdminGuard fail-closed 권한 | seller approve/reject 는 `ADMIN_USER_IDS` env 화이트리스트로만 인가. 미설정/오설정 시 전원 403(승인 업무 마비 vs 자가 승인 차단의 trade-off) | `seller` 모듈·운영 | 002-catalog (SEC-001 대응) |
 | CORS fail-open 기본값 | `CORS_ORIGIN` 미설정 시 전체 origin 허용(`true`) + `credentials: true`. 로컬/개발 편의용 기본값이나 운영에 그대로 배포되면 교차 출처 보안 노출. 운영은 `CORS_ORIGIN` 화이트리스트 **필수** | `main.ts` 부트스트랩·운영 | 011-backend-cors-dev-logging (GAP-011-01) |
 | pg-boss `pgboss` 스키마 자동 생성 | pg-boss 가 앱 기동 시 동일 `DATABASE_URL` PostgreSQL 에 `pgboss` 스키마를 자동 생성 → DB 사용자에게 **스키마 생성(CREATE) 권한 필요**. Fly Postgres 운영 사용자 권한 확인 | `infrastructure/pgboss`·운영 | 003-commerce |
+| rate limit IP 식별의 프록시 헤더 신뢰 전제 | rate limit(018) IP 트래킹은 `Fly-Client-IP`/`X-Forwarded-For` 헤더를 신뢰한다. `trust proxy` 미설정 시 전역 단일 버킷화로 무력화. 또한 이 헤더가 Fly 엣지에 의해 항상 재기입됨을 공식문서/테스트로 확증하지 않은 상태(SEC-018-01, Medium) — 미확증 시 우회·poisoning 가능. 운영 배포 후 헤더 스푸핑 도달 여부 1회 검증(PROC-014 #1) 및 Fly-Client-IP 재기입 공식문서 근거 확보 필요 | `main.ts`·`shared/security/`·운영 | 018-auth-security-hardening |
 | pg-boss 버전 핀 (`^10.4.2`) | CommonJS·Node≥20 호환 버전 고정. v11(Node≥22)·v12(ESM·Node≥22.12)는 본 프로젝트(Node 20·CommonJS)와 비호환. import 는 `import PgBoss = require('pg-boss')`(default import 금지 — 런타임 constructor 실패) | `infrastructure/pgboss` | 003-commerce |
 | deferred 성능 SC 사후 점검 (PROC-03) | SC-045/046(주문/결제 P95 integration)은 TEST_JWT_TOKEN·운영 시드 부재로 파이프라인 내 deferred. **운영 시드 구성 후 P95 측정** 필요(아래 §4 모니터링 연계) | 운영 | 003-commerce coverage-gap |
 | SMTP 이메일 발송 의존성 | 비밀번호 재설정 OTP 발송은 SMTP provider(nodemailer) 필요. `SMTP_*` secret 미설정 시 발송 실패(서비스는 500 미전파 — OTP DB 선기록으로 격리). 운영 SMTP provider 선정·secret 주입 필수 | `auth` 모듈·운영 | 013-flutter-customer-phase2 |

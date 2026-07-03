@@ -19,7 +19,7 @@
 
 > 001~007 완료. `apps/backend`(NestJS **18모듈 전부 실구현** — auth·user·seller·product·inventory·cart·order·payment·coupon·review·shipping·settlement·search·notification·file·banner·stats·admin),
 > Prisma **33테이블**·JWT·AdminGuard·소셜로그인(카카오·구글·네이버)·ALS 트랜잭션·pg-boss·쿠폰(서버할인·이중사용방지)·리뷰(orderItem)·배송(송장·추적·상태전이)·정산(Decimal 집계·멱등)·검색·알림(이벤트 연동)·파일(R2 Port+stub)·배너·통계·운영(감사 로그)·Docker·CI 실재.
-> 단위/통합 테스트: unit 366 PASS(36 suites) + static/e2e 대상 스위트 PASS(017 5b 실행 기준). (005~007 경량 구현 후 정식 검증·문서화 + 008~013 후속 보강 + 014~017 완료.)
+> 단위/통합 테스트: unit 397 PASS(39 suites) + static 4 + e2e(rate-limit 6·atomicity 1) PASS(018 5b 실행 기준). (005~007 경량 구현 후 정식 검증·문서화 + 008~013 후속 보강 + 014~018 완료.) auth 보안 부채 5건(SEC-013-09/10/11·SEC-014-01/06) 018 에서 해소, 신규 SEC-018-01(Medium, 미확증 헤더 신뢰)만 잔존(§6).
 > **후속 보강 완료**: 008 정산 멱등성(SEC-FIND-005-01), 009 알림 이벤트 연동(GAP-006-01), 010 쿠폰 할인값 검증(SEC-001), 011 파일 보안(SEC-FIND-006-01/02·GAP-006-02), 012 정산 completedAt(GAP-005-02), 013 관리자 감사 로그(GAP-007-01) 전부 해결. **추적 백로그 전부 소진**(잔여 SEC/GAP 0, GAP-005-03만 accepted).
 > **잔여 알려진 제약**: 마이그레이션 드리프트(GAP-005-03, accepted) — §6. 그 외 신규 발견 시 각 spec gaps.md·§6 에 추적.
 
@@ -243,14 +243,17 @@ postgres (단일 인스턴스, Fly Postgres)
 | 단일 DB 단일 장애점 | Fly Postgres 단일 인스턴스. HA 옵션 미설정 시 장애 시 다운타임 발생 | 전체 | — |
 | 이메일 알림 제공자 미결정 | notification 모듈의 이메일 발송 SaaS(Resend·Mailgun 등) 미선정 | `notification` 모듈 | [TBD] |
 | 비용 추정 불확실 | 실제 트래픽·데이터 크기에 따라 Fly Postgres 요금 재산정 필요 | 인프라 | — |
-| 소셜 신규가입 경로 orphan user 위험 (SEC-002/GAP-014-01, Medium) | `SocialAuthService.login()` path 3c(신규가입)는 createUser+createSocialAccount 두 INSERT 가 `runInTransaction` 으로 원자화되지 않음(root fallback). 두 번째 쓰기 실패 시 password:null orphan user 가 email 슬롯 점유(계정탈취·권한상승 무관, P2002 폴백으로 대부분 자연 복구). 개선: path 3c 를 runInTransaction 래핑 | `auth` 모듈 | 014-social-login (후속 위임) |
-| 소셜 로그인 아웃바운드 rate limit 부재 (SEC-004/GAP-014-06, Low) | POST /auth/social-login 은 요청마다 kapi.kakao.com·oauth2.googleapis.com·nid.naver.com·openapi.naver.com 로 아웃바운드 HTTP(토큰 검증/code-exchange). 익명·rate limit 부재 → 무효 토큰 대량 전송 시 아웃바운드 증폭. 신규 익명 `POST /auth/naver/state`(016)도 무제한 호출 시 oauth_states 테이블 flooding 가능(TTL+opportunistic 정리로 바운딩, Informational — Security 016 판정). 완화: @nestjs/throttler 전역 rate limit 도입 시 두 엔드포인트 포함 | `auth` 모듈·운영 | 014-social-login·015·016 |
+| ~~소셜 신규가입 경로 orphan user 위험 (SEC-002/GAP-014-01, Medium)~~ | **RESOLVED (018-auth-security-hardening)** — path 3c 를 `runInTransaction` 으로 원자화(createUser+createSocialAccount 양쪽 롤백), P2002 폴백은 트랜잭션 외부 유지(SC-011 회귀 방지) | `auth` 모듈 | 014·018 |
+| ~~소셜 로그인 아웃바운드 rate limit 부재 (SEC-004/GAP-014-06, Low)~~ | **RESOLVED (018)** — `@nestjs/throttler` 계층형 도입: social-login 10/60s·naver/state 20/60s `@Throttle` + 전역 20/60s 기본값(무효 토큰 대량 전송·oauth_states flooding 완화) | `auth` 모듈·운영 | 014·015·016·018 |
 | 네이버 자동연동 이메일 소유권 미검증 (SEC-015-01, High → 자동연동 제외로 RESOLVED) | 네이버는 code-exchange 로 앱바인딩은 확보하나 프로필 email 소유권 검증 수단이 없다(구글 `email_verified` 대비 부재). 이메일 자동연동 시 공격자가 네이버 프로필 이메일을 victim 값으로 설정→로그인하면 계정 탈취 가능. 완화: `AUTO_LINK_PROVIDERS` 에서 네이버 제외(카카오·구글만). 재도입 시 서버측 이메일 소유권 검증(인증 링크 등) 필수 | `auth` 모듈 | 015-naver-code-exchange |
 | ~~네이버 state(CSRF) 서버측 미검증 (SEC-015-02, Medium)~~ **RESOLVED (016)** | 서버측 state 발급(`OAuthStateService`, randomBytes(32) CSPRNG)·verify 이전 검증·원자적 delete-on-consume(row-level lock replay 방어)으로 원 위협모델(클라이언트 값 pass-through 미검증) 완전 제거. 잔존은 네이티브 앱의 `POST /auth/naver/state` 호출 배선(운영 셋업)만 | `auth` 모듈 | 016-naver-state-redirect-hardening |
 | 네이버 redirect_uri — **코드레벨 RESOLVED (016)** / 잔존-권고(운영 확인 대기) (SEC-015-03, Low) | `NAVER_REDIRECT_URI` optional 조회·조건부 포함(fail-safe) 구현. 네이버 공식 문서상 실제 요구 여부는 `[TO-VERIFY]`(운영 셋업 범위). 완전 해소는 운영 크레덴셜 등록·공식 문서 확인 시점 | `auth` 모듈·운영 | 016-naver-state-redirect-hardening |
-| auth reset-password IP rate limit 부재 (SEC-002/GAP-013-09, Medium) | forgot-password 404·find-email 이 user enumeration 표면. per-email rate limit(60초)만 존재, 글로벌 IP rate limit 미적용 → 다수 이메일/전화 순차 조회 가능. 완화 권고: `@nestjs/throttler` IP rate limit. spec 변경 불요(trade-off 수용) | `auth` 모듈 | 013 (후속 patch spec 또는 014 위임) |
-| resetPassword refresh token revoke 비원자 (SEC-003/GAP-013-10, Medium) | 비밀번호 변경(markOtpConsumed 트랜잭션) 완료 후 revokeAllRefreshTokensByUser 를 별도 best-effort 호출. 서버 비정상 종료 시 세션 미폐기 가능(access token TTL 15분 자연 만료로 Medium). 개선: revoke 를 트랜잭션 내 통합 또는 outbox | `auth` 모듈 | 013 (후속 위임) |
-| auth 보안 감사 로그 부재 (SEC-004/GAP-013-11, Medium) | OTP 검증 실패·rate limit 위반(429)·find-email PII 접근 이벤트 감사 로그 미기재 → 브루트포스·enumeration 시도 추적 불가. 개선: WARN 수준 보안 이벤트 로깅 | `auth` 모듈·운영 | 013 (후속 위임) |
+| ~~auth reset-password IP rate limit 부재 (SEC-002/GAP-013-09, Medium)~~ | **RESOLVED (018)** — forgot-password 5/60s·find-email 5/60s·reset-password 10/60s 개별 `@Throttle` IP rate limit(Fly-Client-IP 트래킹) 적용 | `auth` 모듈 | 013·018 |
+| ~~resetPassword refresh token revoke 비원자 (SEC-003/GAP-013-10, Medium)~~ | **RESOLVED (018)** — `revokeAllRefreshTokensByUser` tx-aware 전환 + `resetPassword` 가 markOtpConsumed+revoke 를 단일 `runInTransaction` 통합(서버 비정상 종료 시 세션 미폐기 방지) | `auth` 모듈 | 013·018 |
+| ~~auth 보안 감사 로그 부재 (SEC-004/GAP-013-11, Medium)~~ | **RESOLVED (018)** — `SecurityAuditLogger` 3종(otpVerificationFailed·rateLimitExceeded·findEmailAccessed) WARN 로깅 + maskEmail/maskPhone 마스킹, best-effort 내부 try/catch | `auth` 모듈·운영 | 013·018 |
+| rate limit IP 트래킹의 클라이언트 헤더 신뢰 미검증 (SEC-018-01, Medium) | `resolveClientIp` 가 `Fly-Client-IP`→`X-Forwarded-For`→`req.ip` 순으로 `req.headers` 를 원시 신뢰하며, 이 값이 Fly 엣지 프록시에 의해 항상 재기입됨을 코드/공식문서로 확증하지 않았다(`main.ts` `trust proxy:1` 은 `req.ip` 계산에만 영향, 원시 헤더 접근과 무관). 미확증 시 (a) 임의 XFF 회전으로 rate limit 우회, (b) 피해자 IP 위조 poisoning 가능 — 완화 견고성 한정 이슈(rate limit 인프라 자체는 정상). 검증: PROC-014 #1(헤더 스푸핑 시도) + infra.md §8 Fly-Client-IP 재기입 공식문서 근거 확보 | `shared/security/client-ip.util.ts`·`main.ts`·운영 | 018 |
+| find-email 감사 로그 실패 케이스 미커버 (SEC-018-02, Low) | `findEmailAccessed` 감사 로그는 성공(등록된 전화번호) 경로에서만 기록(NotFoundException 분기 이전 반환). 미등록 전화번호 대량 조회(enumeration 시도)는 미기록 → 탐지 사각. FR-009/SC-016 은 성공 케이스만 명시하므로 spec 충족(비블로킹). IP rate limit(5/60s) 1차 방어. 해소: 실패 케이스 이벤트 추가(후속 spec) | `auth` 모듈·운영 | 018 |
+| pino 요청 로그 redact 미설정 (SEC-018-03, Informational) | `app.module.ts` `LoggerModule.forRoot({ pinoHttp })` 에 `redact`/`serializers` 미설정 → `Authorization`/`cookie` 헤더(JWT 토큰) 평문 로그 노출 가능성. 011 기존 코드(018 diff 범위 밖). 해소: 별도 patch spec 에서 `pinoHttp.redact: ['req.headers.authorization','req.headers.cookie']` 검토 | `app.module.ts` 로깅·운영 | 011(기원)·018(관찰) |
 
 ---
 

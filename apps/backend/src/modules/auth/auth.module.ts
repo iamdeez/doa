@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
 import { AuthSharedModule } from '../../shared/auth/auth-shared.module';
 import { MailModule } from '../../infrastructure/mail/mail.module';
+import { SecurityModule } from '../../shared/security/security.module';
 import { AuthController } from './auth.controller';
 import { AuthRepository } from './auth.repository';
 import { AuthService } from './auth.service';
@@ -18,6 +19,7 @@ import { NaverProvider } from './social/naver.provider';
     JwtModule.register({}),
     AuthSharedModule,
     MailModule,
+    SecurityModule,
   ],
   controllers: [AuthController],
   providers: [

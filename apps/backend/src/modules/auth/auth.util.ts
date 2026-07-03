@@ -8,3 +8,16 @@ export function maskEmail(email: string): string {
   const keep = local.slice(0, Math.min(2, local.length));
   return `${keep}**@${domain}`;
 }
+
+/**
+ * 전화번호를 마스킹한다(NFR-009).
+ * 뒤 4자리만 노출, 나머지 * 로 치환. 길이<4 는 전체 마스킹.
+ * 예: 01012345678 → *******5678
+ */
+export function maskPhone(phone: string): string {
+  if (phone.length < 4) {
+    return '*'.repeat(phone.length);
+  }
+  const last4 = phone.slice(-4);
+  return '*'.repeat(phone.length - 4) + last4;
+}

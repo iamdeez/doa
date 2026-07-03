@@ -8,9 +8,18 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { ApiOkResponse } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 import { AuthenticatedUser } from '../../shared/auth/jwt.strategy';
 import { CurrentUser } from '../../shared/auth/current-user.decorator';
 import { JwtAuthGuard } from '../../shared/auth/jwt-auth.guard';
+import {
+  THROTTLE_FIND_EMAIL_LIMIT,
+  THROTTLE_FORGOT_PASSWORD_LIMIT,
+  THROTTLE_NAVER_STATE_LIMIT,
+  THROTTLE_RESET_PASSWORD_LIMIT,
+  THROTTLE_SOCIAL_LOGIN_LIMIT,
+  THROTTLE_TTL_MS,
+} from '../../shared/security/throttle.constants';
 import { AuthService } from './auth.service';
 import { SocialAuthService } from './social-auth.service';
 import { OAuthStateService } from './social/oauth-state.service';
@@ -55,6 +64,7 @@ export class AuthController {
   @Post('social-login')
   @HttpCode(HttpStatus.OK)
   @ApiOkResponse({ type: SocialLoginResponse })
+  @Throttle({ default: { ttl: THROTTLE_TTL_MS, limit: THROTTLE_SOCIAL_LOGIN_LIMIT } })
   async socialLogin(@Body() dto: SocialLoginDto) {
     // JWT 가드 불필요 — 익명 엔드포인트 (plan.md PATCH-001/ADR-001)
     return this.socialAuthService.login(dto.provider, dto.token, dto.state);
@@ -63,6 +73,7 @@ export class AuthController {
   @Post('naver/state')
   @HttpCode(HttpStatus.OK)
   @ApiOkResponse({ type: NaverStateResponse })
+  @Throttle({ default: { ttl: THROTTLE_TTL_MS, limit: THROTTLE_NAVER_STATE_LIMIT } })
   async naverState() {
     // JWT 가드 불필요 — 로그인 이전 CSRF nonce 발급(익명 엔드포인트, 기존 social-login 과 동일 패턴)
     return this.oauthStateService.issue('naver');
@@ -92,6 +103,7 @@ export class AuthController {
 
   @Post('forgot-password')
   @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { ttl: THROTTLE_TTL_MS, limit: THROTTLE_FORGOT_PASSWORD_LIMIT } })
   async forgotPassword(@Body() dto: ForgotPasswordDto) {
     await this.authService.forgotPassword(dto.email);
     return {};
@@ -99,6 +111,7 @@ export class AuthController {
 
   @Post('reset-password')
   @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { ttl: THROTTLE_TTL_MS, limit: THROTTLE_RESET_PASSWORD_LIMIT } })
   async resetPassword(@Body() dto: ResetPasswordDto) {
     await this.authService.resetPassword(dto.email, dto.otp, dto.newPassword);
     return {};
@@ -107,6 +120,7 @@ export class AuthController {
   @Post('find-email')
   @HttpCode(HttpStatus.OK)
   @ApiOkResponse({ type: FindEmailResponse })
+  @Throttle({ default: { ttl: THROTTLE_TTL_MS, limit: THROTTLE_FIND_EMAIL_LIMIT } })
   async findEmail(@Body() dto: FindEmailDto) {
     return this.authService.findEmail(dto.phone);
   }
