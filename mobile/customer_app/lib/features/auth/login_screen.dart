@@ -55,7 +55,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       final credential = await getCredential();
       await ref
           .read(authControllerProvider.notifier)
-          .socialLogin(credential.provider, credential.token);
+          .socialLogin(credential.provider, credential.token, state: credential.state);
     } on SocialAuthCancelled {
       // 사용자 취소 — 에러 표시 없이 복구
     } on DioException catch (e) {
@@ -147,6 +147,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
               _SocialRow(
                 onKakao: _loading ? null : () => _socialLogin(socialService.signInWithKakao),
                 onGoogle: _loading ? null : () => _socialLogin(socialService.signInWithGoogle),
+                onNaver: _loading ? null : () => _socialLogin(socialService.signInWithNaver),
               ),
             ],
           ),
@@ -191,16 +192,15 @@ class _Dot extends StatelessWidget {
       );
 }
 
-// Naver 소셜 버튼은 이번 릴리즈에서 제외되었다(SEC-001/GAP-014-08/GAP-014-10 —
-// 네이버는 app/client 바인딩 검증 수단이 없어 재로그인 경로 계정 탈취를 차단할 수 없음).
-// 카카오·구글 두 provider 만 활성화한다.
 class _SocialRow extends StatelessWidget {
   final VoidCallback? onKakao;
   final VoidCallback? onGoogle;
+  final VoidCallback? onNaver;
 
   const _SocialRow({
     required this.onKakao,
     required this.onGoogle,
+    required this.onNaver,
   });
 
   @override
@@ -219,6 +219,17 @@ class _SocialRow extends StatelessWidget {
             Colors.white,
             const Text('G', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
             border: true,
+          ),
+        ),
+        const SizedBox(width: 20),
+        GestureDetector(
+          onTap: onNaver,
+          child: _social(
+            const Color(0xFF03C75A),
+            const Text(
+              'N',
+              style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.white),
+            ),
           ),
         ),
       ],

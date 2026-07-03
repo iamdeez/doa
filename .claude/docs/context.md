@@ -18,7 +18,7 @@
 - **주요 기술 스택**: Node.js + TypeScript, NestJS, Prisma, PostgreSQL 16, Turborepo
 
 > 001~007 완료. `apps/backend`(NestJS **18모듈 전부 실구현** — auth·user·seller·product·inventory·cart·order·payment·coupon·review·shipping·settlement·search·notification·file·banner·stats·admin),
-> Prisma **32테이블**·JWT·AdminGuard·소셜로그인(카카오·구글)·ALS 트랜잭션·pg-boss·쿠폰(서버할인·이중사용방지)·리뷰(orderItem)·배송(송장·추적·상태전이)·정산(Decimal 집계·멱등)·검색·알림(이벤트 연동)·파일(R2 Port+stub)·배너·통계·운영(감사 로그)·Docker·CI 실재.
+> Prisma **33테이블**·JWT·AdminGuard·소셜로그인(카카오·구글·네이버)·ALS 트랜잭션·pg-boss·쿠폰(서버할인·이중사용방지)·리뷰(orderItem)·배송(송장·추적·상태전이)·정산(Decimal 집계·멱등)·검색·알림(이벤트 연동)·파일(R2 Port+stub)·배너·통계·운영(감사 로그)·Docker·CI 실재.
 > 단위/통합 테스트: unit 255 PASS(25 suites) + e2e/static 84 PASS(16 suites). (005~007 경량 구현 후 정식 검증·문서화 + 008~013 후속 보강 완료.)
 > **후속 보강 완료**: 008 정산 멱등성(SEC-FIND-005-01), 009 알림 이벤트 연동(GAP-006-01), 010 쿠폰 할인값 검증(SEC-001), 011 파일 보안(SEC-FIND-006-01/02·GAP-006-02), 012 정산 completedAt(GAP-005-02), 013 관리자 감사 로그(GAP-007-01) 전부 해결. **추적 백로그 전부 소진**(잔여 SEC/GAP 0, GAP-005-03만 accepted).
 > **잔여 알려진 제약**: 마이그레이션 드리프트(GAP-005-03, accepted) — §6. 그 외 신규 발견 시 각 spec gaps.md·§6 에 추적.
@@ -72,7 +72,7 @@ Events (발행/구독 — NestJS EventEmitter)
 
 | 모듈 | 담당 스키마 | 역할 |
 |---|---|---|
-| `auth` | `users` | 로그인/JWT/Refresh/비밀번호 재설정 OTP(POST /auth/forgot-password·/auth/reset-password)·이메일 찾기(POST /auth/find-email, 마스킹 반환)/세션 · 소셜 로그인(POST /auth/social-login — 카카오·구글, SocialAuthService 계정해석 3단계: providerId 매칭 재로그인→email 매칭 자동연동→신규가입) |
+| `auth` | `users` | 로그인/JWT/Refresh/비밀번호 재설정 OTP(POST /auth/forgot-password·/auth/reset-password)·이메일 찾기(POST /auth/find-email, 마스킹 반환)/세션 · 소셜 로그인(POST /auth/social-login — 카카오·구글·**네이버** 3종. 네이버는 code-exchange(client_secret 서버 교환) 방식, 카카오·구글은 클라이언트 토큰 검증 방식(혼합). SocialAuthService 계정해석 3단계: providerId 매칭 재로그인→email 매칭 자동연동(카카오·구글 한정)→신규가입) · **`POST /auth/naver/state`(익명, CSRF state 발급)** — `OAuthStateService`(`social/oauth-state.service.ts`)가 state 발급(randomBytes(32) base64url·TTL 10분)·검증·원자적 1회성 소비(delete-on-consume). 네이버 code-exchange 는 로그인 전 이 엔드포인트로 발급받은 state 를 echo, 서버가 verify 이전 검증(SEC-015-02 하드닝, 016) |
 | `user` | `users` | 프로필/배송지/찜(wishlist)/최근 본 상품/등급 |
 | `seller` | `users` | 판매자 등록·심사·판매자 정보 |
 | `product` | `products` | 상품/카테고리/옵션/이미지 |
@@ -104,7 +104,7 @@ Events (발행/구독 — NestJS EventEmitter)
 | `shared/config` | `src/shared/config/` | jwt.config (Access 15분 / Refresh 30일 상수) |
 | `shared/prisma` | `src/shared/prisma/` | PrismaService · PrismaModule (DB 연결) |
 | `MailerPort` | `src/infrastructure/mail/` | 이메일 발송 어댑터. abstract `MailerPort` + `SmtpMailer`(nodemailer, `NODE_ENV=production`)·`StubMailer`(무네트워크 테스트). auth 비밀번호 재설정 OTP 발송 DI 주입 |
-| `social/` (auth 내부) | `src/modules/auth/social/` | `SocialProviderPort` 추상 + `KakaoProvider`(access_token_info app_id 대조)·`GoogleProvider`(tokeninfo aud+email_verified)·`StubSocialProvider`. `SocialProviderResolver` 가 provider 문자열→구현체 매핑(카카오·구글 활성). `NaverProvider` 는 파일 보존·미와이어(SEC-001 — 별도 spec 이월) |
+| `social/` (auth 내부) | `src/modules/auth/social/` | `SocialProviderPort` 추상 + `KakaoProvider`(access_token_info app_id 대조)·`GoogleProvider`(tokeninfo aud+email_verified)·`StubSocialProvider`. `SocialProviderResolver` 가 provider 문자열→구현체 매핑(카카오·구글·**네이버 3종 활성**). `NaverProvider` 는 code-exchange 방식(`nid.naver.com/oauth2.0/token` 으로 client_secret 교환 → `openapi.naver.com/v1/nid/me` 프로필 조회) — 015 에서 와이어됨 |
 
 ---
 
@@ -180,7 +180,7 @@ completed → refund_pending → refunded
 postgres (단일 인스턴스, Fly Postgres)
 ├── schema: users      (users, refresh_tokens, sellers, addresses, wishlists, product_views)
 ├── schema: products   (categories, products, product_images, variants, inventory, inventory_logs)
-├── schema: users      (users, refresh_tokens, sellers, addresses, wishlists, product_views, notifications, password_reset_otps)
+├── schema: users      (users, refresh_tokens, sellers, addresses, wishlists, product_views, notifications, password_reset_otps, social_accounts, oauth_states)
 ├── schema: products   (categories, products, product_images, variants, inventory, inventory_logs)
 ├── schema: commerce   (carts, coupons, user_coupons, reviews)
 ├── schema: orders     (orders, order_items, order_events, shipments, shipment_tracking)
@@ -190,12 +190,14 @@ postgres (단일 인스턴스, Fly Postgres)
 └── schema: files      (file_assets)
 ```
 
-> **실재 상태**: **32개 테이블 실체화**(Prisma migrate 적용, 마이그레이션 15차) — `users` 9(+ notifications·password_reset_otps·social_accounts) · `products` 6 · `commerce` 4(carts·coupons·user_coupons·reviews) · `orders` 5(+ shipments·shipment_tracking) · `payments` 3(payments·refunds·payment_outbox) · `settlements` 2(settlements·settlement_items) · `admin` 2(banners·admin_audit_logs) · `files` 1(file_assets).
+> **실재 상태**: **33개 테이블 실체화**(Prisma migrate 적용, 마이그레이션 16차) — `users` 10(+ notifications·password_reset_otps·social_accounts·oauth_states) · `products` 6 · `commerce` 4(carts·coupons·user_coupons·reviews) · `orders` 5(+ shipments·shipment_tracking) · `payments` 3(payments·refunds·payment_outbox) · `settlements` 2(settlements·settlement_items) · `admin` 2(banners·admin_audit_logs) · `files` 1(file_assets).
 > Variant 가 옵션을 인라인 필드로 흡수(별도 options 테이블 없음). `order_events`·`inventory_logs`·`shipment_tracking` 은 append-only. 금전 필드(totalAmount·unitPrice·amount·totalSales·commission·payoutAmount·saleAmount 등)는 전부 Decimal(12,2)(P-005). cross-schema/cross-module 참조는 plain String(FK 미선언, P-001) — notifications.userId·file_assets.ownerId·banners 무참조·settlements.sellerId·settlement_items.orderItemId·shipments.orderId 등.
 > notifications 는 `admin` 이 아닌 `users` 스키마에 위치한다(사용자 알림). admin 스키마는 banners·admin_audit_logs 2개(공지·시스템설정 테이블은 미도입 — 필요 시 후속).
 > Refresh Token 은 원문이 아닌 SHA-256 해시(`tokenHash`)로 저장된다(ADR-003).
 > `users.password_reset_otps`(013): 비밀번호 재설정 OTP — email·otpHash(SHA-256)·expiresAt·consumedAt·attempts·createdAt, `@@index([email, createdAt desc])`. OTP 평문 미저장(해시만). attempts 5회 초과 시 consumed 처리(SEC-001 브루트포스 차단).
-> `users.social_accounts`(014): 소셜 계정 연동 — provider·providerId·userId·email·createdAt, `@@unique([provider, providerId])`·`@@index([userId])`·FK onDelete Cascade·`@@schema("users")`(마이그레이션 `20260701064209_add_social_accounts`). `users.users.password: String → String?`(ADR-005) — 소셜 전용 사용자(비밀번호 없음) 허용, 이메일+비밀번호 로그인 시 null 가드. 활성 provider 카카오·구글(네이버 제외 — SEC-001).
+> `users.social_accounts`(014): 소셜 계정 연동 — provider·providerId·userId·email·createdAt, `@@unique([provider, providerId])`·`@@index([userId])`·FK onDelete Cascade·`@@schema("users")`(마이그레이션 `20260701064209_add_social_accounts`). `users.users.password: String → String?`(ADR-005) — 소셜 전용 사용자(비밀번호 없음) 허용, 이메일+비밀번호 로그인 시 null 가드. **로그인 가능 provider(`SUPPORTED_PROVIDERS`): 카카오·구글·네이버 3종**. **email 자동연동(`AUTO_LINK_PROVIDERS`) 허용: 카카오·구글 2종만** — 네이버는 이메일 소유권 미검증(SEC-015-01)으로 자동연동 제외(재로그인·신규가입은 가능, 동일 이메일 요청은 409 Conflict).
+
+> `users.oauth_states`(016): 네이버 code-exchange CSRF state — state(UNIQUE·base64url 256bit CSPRNG)·provider('naver')·expiresAt(TTL 10분)·createdAt, `@@index([expiresAt])`(만료 정리)·`@@map("oauth_states")`·`@@schema("users")`(마이그레이션 `20260703070000_add_oauth_states`). **FK 없음** — 익명 발급(로그인 이전, userId 미결정) 독립 엔티티. 1회성 소비는 조건부 `deleteMany`(row-level lock)로 원자화(ADR-003, replay 방어). 감사·PII 아님(delete-on-consume, consumedAt 미보유).
 
 **주요 설계 결정 (비도출 지식)**:
 - `cart`: `user_id + JSONB items` 구조로 DynamoDB Carts 테이블 대체.
@@ -241,7 +243,10 @@ postgres (단일 인스턴스, Fly Postgres)
 | 이메일 알림 제공자 미결정 | notification 모듈의 이메일 발송 SaaS(Resend·Mailgun 등) 미선정 | `notification` 모듈 | [TBD] |
 | 비용 추정 불확실 | 실제 트래픽·데이터 크기에 따라 Fly Postgres 요금 재산정 필요 | 인프라 | — |
 | 소셜 신규가입 경로 orphan user 위험 (SEC-002/GAP-014-01, Medium) | `SocialAuthService.login()` path 3c(신규가입)는 createUser+createSocialAccount 두 INSERT 가 `runInTransaction` 으로 원자화되지 않음(root fallback). 두 번째 쓰기 실패 시 password:null orphan user 가 email 슬롯 점유(계정탈취·권한상승 무관, P2002 폴백으로 대부분 자연 복구). 개선: path 3c 를 runInTransaction 래핑 | `auth` 모듈 | 014-social-login (후속 위임) |
-| 소셜 로그인 아웃바운드 rate limit 부재 (SEC-004/GAP-014-06, Low) | POST /auth/social-login 은 요청마다 kapi.kakao.com·oauth2.googleapis.com 로 아웃바운드 HTTP(토큰 검증). 익명·rate limit 부재 → 무효 토큰 대량 전송 시 아웃바운드 증폭. 완화: @nestjs/throttler | `auth` 모듈·운영 | 014-social-login |
+| 소셜 로그인 아웃바운드 rate limit 부재 (SEC-004/GAP-014-06, Low) | POST /auth/social-login 은 요청마다 kapi.kakao.com·oauth2.googleapis.com·nid.naver.com·openapi.naver.com 로 아웃바운드 HTTP(토큰 검증/code-exchange). 익명·rate limit 부재 → 무효 토큰 대량 전송 시 아웃바운드 증폭. 신규 익명 `POST /auth/naver/state`(016)도 무제한 호출 시 oauth_states 테이블 flooding 가능(TTL+opportunistic 정리로 바운딩, Informational — Security 016 판정). 완화: @nestjs/throttler 전역 rate limit 도입 시 두 엔드포인트 포함 | `auth` 모듈·운영 | 014-social-login·015·016 |
+| 네이버 자동연동 이메일 소유권 미검증 (SEC-015-01, High → 자동연동 제외로 RESOLVED) | 네이버는 code-exchange 로 앱바인딩은 확보하나 프로필 email 소유권 검증 수단이 없다(구글 `email_verified` 대비 부재). 이메일 자동연동 시 공격자가 네이버 프로필 이메일을 victim 값으로 설정→로그인하면 계정 탈취 가능. 완화: `AUTO_LINK_PROVIDERS` 에서 네이버 제외(카카오·구글만). 재도입 시 서버측 이메일 소유권 검증(인증 링크 등) 필수 | `auth` 모듈 | 015-naver-code-exchange |
+| ~~네이버 state(CSRF) 서버측 미검증 (SEC-015-02, Medium)~~ **RESOLVED (016)** | 서버측 state 발급(`OAuthStateService`, randomBytes(32) CSPRNG)·verify 이전 검증·원자적 delete-on-consume(row-level lock replay 방어)으로 원 위협모델(클라이언트 값 pass-through 미검증) 완전 제거. 잔존은 네이티브 앱의 `POST /auth/naver/state` 호출 배선(운영 셋업)만 | `auth` 모듈 | 016-naver-state-redirect-hardening |
+| 네이버 redirect_uri — **코드레벨 RESOLVED (016)** / 잔존-권고(운영 확인 대기) (SEC-015-03, Low) | `NAVER_REDIRECT_URI` optional 조회·조건부 포함(fail-safe) 구현. 네이버 공식 문서상 실제 요구 여부는 `[TO-VERIFY]`(운영 셋업 범위). 완전 해소는 운영 크레덴셜 등록·공식 문서 확인 시점 | `auth` 모듈·운영 | 016-naver-state-redirect-hardening |
 | auth reset-password IP rate limit 부재 (SEC-002/GAP-013-09, Medium) | forgot-password 404·find-email 이 user enumeration 표면. per-email rate limit(60초)만 존재, 글로벌 IP rate limit 미적용 → 다수 이메일/전화 순차 조회 가능. 완화 권고: `@nestjs/throttler` IP rate limit. spec 변경 불요(trade-off 수용) | `auth` 모듈 | 013 (후속 patch spec 또는 014 위임) |
 | resetPassword refresh token revoke 비원자 (SEC-003/GAP-013-10, Medium) | 비밀번호 변경(markOtpConsumed 트랜잭션) 완료 후 revokeAllRefreshTokensByUser 를 별도 best-effort 호출. 서버 비정상 종료 시 세션 미폐기 가능(access token TTL 15분 자연 만료로 Medium). 개선: revoke 를 트랜잭션 내 통합 또는 outbox | `auth` 모듈 | 013 (후속 위임) |
 | auth 보안 감사 로그 부재 (SEC-004/GAP-013-11, Medium) | OTP 검증 실패·rate limit 위반(429)·find-email PII 접근 이벤트 감사 로그 미기재 → 브루트포스·enumeration 시도 추적 불가. 개선: WARN 수준 보안 이벤트 로깅 | `auth` 모듈·운영 | 013 (후속 위임) |
@@ -255,5 +260,7 @@ postgres (단일 인스턴스, Fly Postgres)
 | 2026-06-29 | 008~013 후속 보강 — 추적 백로그 전부 소진. 정산 멱등성·알림 이벤트 연동·쿠폰 할인값 검증·파일 보안·정산 completedAt·관리자 감사 로그. 30테이블, unit 255. §6 제약 대부분 RESOLVED(GAP-005-03만 accepted) | 008~013 |
 | 2026-07-01 | v1.1.0/013-flutter-customer-phase2 — auth 비밀번호 재설정 OTP·이메일 찾기(마스킹)·MailerPort(SMTP/nodemailer)·`GET /auth/me` name·`password_reset_otps` 신규(31테이블·14차)·OTP 브루트포스 차단(SEC-001). §2 auth·MailerPort·§4 데이터모델·§6 Medium 보안부채 3종(SEC-002~004) 등재 | 013-flutter-customer-phase2 |
 | 2026-07-02 | v1.1.0/014-social-login — 소셜 로그인(카카오·구글, 클라이언트 토큰 검증·SocialProviderPort/Resolver·계정해석 3단계 자동연동)·`social_accounts` 신규(32테이블·15차)·`User.password` nullable. Naver 는 SEC-001(앱바인딩 검증 부재)로 완전 제외(별도 spec 이월). §2 auth·social/·§4 데이터모델·§6 SEC-002/004 등재 | 014-social-login |
+| 2026-07-03 | v1.1.0/015-naver-code-exchange — 네이버 소셜 로그인 재도입(code-exchange: client_secret 서버 교환). 로그인 3종 활성(`SUPPORTED_PROVIDERS`)·자동연동은 카카오·구글 2종(`AUTO_LINK_PROVIDERS`, 네이버는 SEC-015-01 이메일 소유권 미검증으로 제외). DB 스키마 무변경(social_accounts 재사용). §2 auth·social/·§4 데이터모델·§6 SEC-015-01/02/03 등재 | 015-naver-code-exchange |
+| 2026-07-03 | v1.1.0/016-naver-state-redirect-hardening — 네이버 code-exchange CSRF state 서버측 하드닝. `POST /auth/naver/state`(익명 발급)·`OAuthStateService`·`users.oauth_states` 신규(33테이블·16차)·verify 이전 state 검증·redirect_uri 조건부(NAVER_REDIRECT_URI). SEC-015-02 RESOLVED·SEC-015-03 코드 RESOLVED/잔존. §2 auth·§4·§6·§7 갱신 | 016-naver-state-redirect-hardening |
 | 2026-06-29 | 005·006·007 반영 — 18개 도메인 전부 실구현(배송·정산·검색·알림·파일·배너·통계·운영), 29테이블. notifications 위치 정정(admin→users), file R2 Port+stub 정정, §6 신규 제약(SEC-FIND-005-01·006-01/02, GAP-005-03·006-01/02·007-01, OBS-007-01) 추가 | 005-shipping-settlement, 006-search-notification-file, 007-banner-stats-admin |
 | (이전) | 001~004 골격·카탈로그·거래·리뷰쿠폰 | 001~004 |

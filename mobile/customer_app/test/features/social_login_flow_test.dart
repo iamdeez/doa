@@ -272,4 +272,14 @@ class _StubSocialAuthService implements SocialAuthService {
     }
     return _credential!;
   }
+
+  // 015 SocialAuthService.signInWithNaver 추가로 인터페이스 구현 필수(Dart `implements`).
+  // 본 014 테스트는 카카오 경로만 검증하므로 호출되지 않는다.
+  @override
+  Future<SocialCredential> signInWithNaver() async {
+    if (_cancelled) {
+      throw SocialAuthCancelled();
+    }
+    return _credential!;
+  }
 }

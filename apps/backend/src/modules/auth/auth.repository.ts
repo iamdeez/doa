@@ -148,4 +148,32 @@ export class AuthRepository {
   async findFirstUserByPhone(phone: string): Promise<User | null> {
     return this.prisma.user.findFirst({ where: { phone } });
   }
+
+  // ──────────────────────────────────────────────
+  // 네이버 state(CSRF) 관련 메서드
+  // runInTransaction 콜백 밖 단발 쿼리이므로 root client 사용(tx 미사용).
+  // ──────────────────────────────────────────────
+
+  async createOAuthState(data: {
+    state: string;
+    provider: string;
+    expiresAt: Date;
+  }): Promise<void> {
+    await this.prisma.oAuthState.create({ data });
+  }
+
+  /** 조건부 원자적 DELETE(delete-on-consume) — 삭제된 행 수를 반환한다(1=성공, 0=거부). */
+  async consumeOAuthState(provider: string, state: string, now: Date): Promise<number> {
+    const result = await this.prisma.oAuthState.deleteMany({
+      where: { state, provider, expiresAt: { gt: now } },
+    });
+    return result.count;
+  }
+
+  async deleteExpiredOAuthStates(now: Date): Promise<number> {
+    const result = await this.prisma.oAuthState.deleteMany({
+      where: { expiresAt: { lte: now } },
+    });
+    return result.count;
+  }
 }

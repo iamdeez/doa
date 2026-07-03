@@ -47,19 +47,27 @@ class AuthController extends Notifier<AuthStatus> {
     state = AuthStatus.authenticated;
   }
 
-  /// 소셜 로그인 — provider SDK 로 토큰 획득 후 백엔드 social-login API 호출.
+  /// 소셜 로그인 — provider SDK 로 토큰(또는 naver 의 경우 authorization code) 획득 후
+  /// 백엔드 social-login API 호출. [state] 는 naver 전용 CSRF 파라미터(ADR-007) — kakao·google 은
+  /// null 이며 이 경우 요청 바디에 포함하지 않아 기존 요청 형태를 그대로 유지한다(하위 호환).
   /// [SocialAuthCancelled] 는 호출 측에서 무시(silent recovery)한다.
-  Future<void> socialLogin(String provider, String token) async {
+  Future<void> socialLogin(String provider, String token, {String? state}) async {
     final res = await _dio.post<Map<String, dynamic>>(
       '/auth/social-login',
-      data: {'provider': provider, 'token': token},
+      data: {
+        'provider': provider,
+        'token': token,
+        if (state != null) 'state': state,
+      },
       options: Options(extra: {'anonymous': true}),
     );
     await _tokens.save(
       accessToken: res.data!['accessToken'] as String,
       refreshToken: res.data!['refreshToken'] as String,
     );
-    state = AuthStatus.authenticated;
+    // 파라미터명 `state`(OAuth CSRF 값, Test Authoring Contract canonical)가 Notifier<AuthStatus>
+    // 의 인스턴스 멤버 `state` 를 가리므로 `this.state` 로 명시 접근한다.
+    this.state = AuthStatus.authenticated;
   }
 
   Future<void> logout() async {

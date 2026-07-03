@@ -1,3 +1,224 @@
+## [016-naver-state-redirect-hardening] 구현 완료
+
+> **[사후 정합화 2026-07-03 22:21]** 아래 본문은 6단계 Docs 시점 스냅샷이라 SC-014/015 를 "PENDING",
+> Security 재감사를 "미실행"으로 서술한다. **이후 Security Agent 재감사가 완료되어 판정이 확정됐다**:
+> `016/security/security-report.md` v1.1 — **SEC-015-02 RESOLVED · SEC-015-03 RESOLVED(코드 레벨)/잔존-권고**,
+> `status: COMPLETE`, `gate: PASS`(Critical/High/Medium/Low 신규 0). 따라서 **SC-014·SC-015 = PASS**
+> (`016/test/coverage.md` v1.1 정합화 반영). 문서-갱신 GAP-016-01~04 도 Retrospective 패치
+> (PATCH-CXT-016-01~05)로 context.md·infra.md 에 **적용 완료**(`016/gaps.md` 전건 RESOLVED). 아래
+> "미해결 GAP" 절의 Security 재감사 대기·문서 갱신 항목은 모두 종결됐으며, 잔존은 운영 셋업(네이티브
+> 앱 배선·실 크레덴셜·redirect_uri 최종 확인)뿐이다.
+
+> **base commit 주의**: 016 착수 시점에 v1.1.0/015 가 아직 커밋되지 않은 상태였다(working tree 공존).
+> 따라서 아래 "변경 파일"·`DIFF-016-naver-state-redirect-hardening.md` 의 diff 는 base `6b64c24`(014 완료
+> 커밋) 기준으로 **015+016 두 spec 의 누적 변경분**을 함께 포함한다. `auth.controller.ts`·
+> `auth.module.ts`·`social-auth.service.ts`·`naver.provider.ts`·
+> `social-auth.service.autolink-policy.spec.ts` 5개 파일과, 015 가 신규 생성한 3개 미추적 테스트 파일
+> (`naver.provider.spec.ts`·`social-auth.service.naver.spec.ts`·
+> `social-auth.service.naver-autolink-exclusion.spec.ts`)은 015 변경분과 016 변경분이 물리적으로
+> 혼재한다. 아래 서술·라인 수는 **016 이 추가한 증분만**을 `docs/specs/v1.1.0/DIFF-015-naver-code-exchange.md`
+> 에 기록된 015 기준치와 대조하여 best-effort 로 분리했다(정확한 016 단독 diff 는 015 완료 커밋 생성 후
+> `git diff {015-완료-커밋}` 으로 재확정 필요 — 아래 "후속 작업 시 주의사항" 참조).
+
+> v1.1.0 의 열여섯 번째 차수 — **네이버 code-exchange 보안 하드닝(SEC-015-02/03 백엔드 완결 조치)**:
+> 015 가 재도입한 네이버 서버 authorization code + client_secret 교환 흐름에 대해, 6단계 Security Agent
+> 재감사(security-report.md v1.1)가 잔존시킨 두 권고사항을 처리한다. (1) **SEC-015-02(Medium) —
+> state(CSRF) 서버측 하드닝**: 신규 `POST /auth/naver/state`(익명) 엔드포인트가 `node:crypto
+> randomBytes(32).toString('base64url')` 로 예측 불가능한 state 값을 발급하고(FR-001, NFR-002),
+> `oauth_states` 테이블(신규, `users` 스키마)에 TTL(`NAVER_STATE_TTL_MIN=10분`, FR-002)과 함께 저장한다.
+> `SocialAuthService.login()` 진입부(`providerImpl.verify` 호출 **이전**)에서 provider가 'naver'인 경우에만
+> `OAuthStateService.consume()` 을 호출해 값 일치·미만료·미소비 여부를 검증하고(FR-003~004), 검증은 단일
+> 조건부 `deleteMany({ where:{ state, provider, expiresAt:{gt:now} } })` 로 **확인과 1회성 소비를
+> 원자화**(delete-on-consume, ADR-003)한다 — PostgreSQL row-level lock 에 위임하여 앱 레이어 Lock 없이
+> Check-Then-Act 레이스를 차단한다(FR-005). 카카오·구글은 이 검증 분기에 진입하지 않아 기존 클라이언트
+> 토큰 검증 흐름이 완전히 보존된다(FR-006, NFR-003). (2) **SEC-015-03(Low) — redirect_uri 조건부 지원**:
+> `NaverProvider.verify()` 가 `NAVER_REDIRECT_URI` 환경변수를 optional 로 조회하여, 설정된 경우에만 토큰
+> 교환 요청에 `redirect_uri` 파라미터를 추가한다(FR-007) — 미설정 시 015 의 기존 동작(파라미터 미포함)이
+> 그대로 유지되는 **fail-safe 설계**(FR-008, 회귀 0). state 저장은 신규 외부 저장소(Redis 등) 없이 기존
+> 단일 PostgreSQL 인스턴스의 신규 테이블 1개로 구현하여 constitution P-003(단일 DB 원칙)·NFR-004 를
+> 충족한다(ADR-001 — Fly.io scale-to-zero 콜드 스타트·rolling deploy 인스턴스 불일치로 인한 in-memory
+> 대안의 false rejection 위험을 구조적으로 회피).
+>
+> base `6b64c24`(014 완료 커밋, 015 와 공유) → working tree(미커밋). 변경 추적: 위 base commit 주의 참조.
+> **신규 npm 의존 0건**(`node:crypto`·Prisma·`@nestjs/config` 전부 기존 의존성 재사용, SC-012). 신규
+> 마이그레이션 1건(`20260703070000_add_oauth_states`, additive — 기존 테이블 무변경). 선택 단계:
+> Database Design Agent 활성(oauth_states 스키마·마이그레이션·rollback.sql 산출, data-model.md). Security
+> Agent 재감사는 본 Docs 단계 다음으로 이어진다(SC-014/015 최종 판정은 그 재감사 완료 후 확정 —
+> coverage.md 는 PENDING 으로 위임 명시). Deploy/Performance Agent 비활성(신규 컨테이너·아웃바운드 없음,
+> plan.md "배포 환경 영향"·"성능 게이트 판정" 절 근거).
+
+**변경 파일** (016 고유 증분, 015 기준치 대조 후 분리 — 상세 근거는 `DIFF-016-naver-state-redirect-hardening.md` 참조):
+
+백엔드 — 신규:
+- `apps/backend/src/modules/auth/social/oauth-state.service.ts` (33줄): `OAuthStateService` — `issue(provider)`(난수 발급·TTL 계산·opportunistic 만료정리 후 INSERT), `consume(provider, state?)`(원자적 조건부 DELETE 위임)
+- `apps/backend/src/modules/auth/social/oauth-state.service.spec.ts` (93줄, 신규 테스트): SC-001·002·010 매핑(발급·TTL 만료·예측불가 N=20)
+- `apps/backend/src/modules/auth/social-auth.service.naver-state.spec.ts` (185줄, 신규 테스트): SC-003~006 매핑(state 검증 통과·거부(불일치/만료/미제공)·1회성 재사용 거부·kakao/google state 무관 통과)
+- `apps/backend/prisma/migrations/20260703070000_add_oauth_states/migration.sql` (16줄, Database Design Agent 산출): `oauth_states` 테이블 CREATE(`state` UNIQUE, `@@index([expiresAt])`)
+- `apps/backend/prisma/migrations/20260703070000_add_oauth_states/rollback.sql` (10줄, 참조용): DROP TABLE 수동 롤백 스크립트
+
+백엔드 — 수정(016 고유분):
+- `apps/backend/prisma/schema.prisma` (+15): `model OAuthState`(`users` 스키마, `@@map("oauth_states")`) 추가
+- `apps/backend/src/modules/auth/auth.constants.ts` (+3): `NAVER_STATE_TTL_MIN = 10` 상수 추가(013 OTP 상수 파일 재사용)
+- `apps/backend/src/modules/auth/auth.repository.ts` (+28): `createOAuthState`·`consumeOAuthState`(원자적 조건부 delete)·`deleteExpiredOAuthStates` 메서드 추가
+- `apps/backend/src/modules/auth/dto/auth-response.dto.ts` (+6): `NaverStateResponse { state: string }` Swagger 응답 타입 추가
+- `apps/backend/.env.example` (+2): `NAVER_REDIRECT_URI=` 항목 + 주석 추가(NFR-005, SC-013)
+- `apps/backend/src/modules/auth/auth.controller.ts` (016 증분 약 +11): `@Post('naver/state')` `naverState()` 핸들러 추가(익명, `OAuthStateService.issue('naver')` 위임) — 015 가 이미 수정한 `dto.state` 전달 라인과 물리적으로 혼재
+- `apps/backend/src/modules/auth/auth.module.ts` (016 증분 약 +2): `OAuthStateService` provider 등록 — 015 의 `NaverProvider` 재편입과 혼재
+- `apps/backend/src/modules/auth/social-auth.service.ts` (016 증분 약 +17/-1): `login()` 생성자 4번째 인자 `OAuthStateService` 주입 + 진입부 naver 조건부 state 검증 분기(`providerImpl.verify` 이전) 추가 — 015 의 `AUTO_LINK_PROVIDERS` 반전·조건부 verify 호출과 물리적으로 혼재
+- `apps/backend/src/modules/auth/social/naver.provider.ts` (016 증분 약 +5): `verify()` 에 `configService.get('NAVER_REDIRECT_URI')` optional 조회 + `redirect_uri` 파라미터 조건부 포함(FR-007/008) — 015 의 code-exchange 전면 재작성과 물리적으로 혼재
+- `apps/backend/src/modules/auth/social-auth.service.spec.ts` (+13, §F T012 마이그레이션): `OAuthStateService` DI mock 추가(회귀 방지)
+- `apps/backend/src/modules/auth/social-auth.service.autolink-policy.spec.ts` (016 증분 약 +20/-2): `OAuthStateService` DI mock 추가(§F T012) + STALE_SC 정정 마커(`(v1.1.0/015 spec)`, PATCH-A18 옵션 A) 2개소
+- `apps/backend/src/modules/auth/social/naver.provider.spec.ts` (015 산출물 대비 016 증분 약 +55): SC-007/008(redirect_uri 조건부 포함/생략) 테스트 추가 + `configService.get` mock 보강
+- `apps/backend/src/modules/auth/social-auth.service.naver.spec.ts` (015 산출물 대비 016 증분 약 +16): `OAuthStateService` DI mock 추가(§F T012) + STALE_SC 정정 마커(SC-010, `(v1.1.0/015 spec)`) 1개소
+- `apps/backend/src/modules/auth/social-auth.service.naver-autolink-exclusion.spec.ts` (015 산출물 대비 016 증분 약 +13): `OAuthStateService` DI mock 추가(§F T012, 회귀 방지)
+
+DB 설계 산출물(참조 문서, 코드 아님):
+- `docs/specs/v1.1.0/016-naver-state-redirect-hardening/db-design/data-model.md` (신규): `oauth_states` 테이블 정의·ERD·인덱스 전략·무결성 규칙·마이그레이션/롤백 전략(Database Design Agent)
+
+**검증** (5b Test Agent EXECUTION, coverage.md v1.1 기준):
+- 백엔드 전체: `pnpm --filter backend exec tsc --noEmit` 0 error, `pnpm --filter backend test --silent` **35 suites / 334 tests 전량 PASS**(회귀 0), `pnpm --filter backend lint` 0 error(본 spec 파일 0건)
+- `prisma migrate deploy` 로 `20260703070000_add_oauth_states` 적용 확인(16차 마이그레이션·33테이블), `test/health.e2e-spec.ts` 로 `AppModule` 런타임 부팅(`OAuthStateService` DI wiring 포함) 3/3 PASS
+- SC-001~008·SC-010·SC-011: unit PASS(state 발급·TTL 만료·검증통과·검증거부(불일치/만료/미제공)·1회성 재사용거부·kakao/google 회귀 0·redirect_uri 조건부 포함/생략·예측불가(N=20)·015 카카오/구글 기존 스위트 100% PASS)
+- SC-012: static grep — `package.json`/lockfile 에 Redis 등 외부 저장소 클라이언트 신규 의존 0건
+- SC-013: static — `.env.example` 에 `NAVER_REDIRECT_URI` 항목 존재 확인
+- SC-009: `[env:e2e-docker]` deferred(실 OAuth 크레덴셜·네이티브 연동 필요, 015 SC-016 과 동일 처리 방식, coverage-gap.md 카테고리(3))
+- SC-014·SC-015: **PENDING** — 6단계 Security Agent 재감사 위임(테스트 태스크 아님). 본 Docs 단계 완료 후 이어지는 Security Agent 재감사에서 최종 RESOLVED/잔존-권고 판정 필요(아래 "후속 작업 시 주의사항" 참조)
+- STALE_SC 3건(`social-auth.service.autolink-policy.spec.ts` SC-006/008, `social-auth.service.naver.spec.ts` SC-010 — 전부 015 spec 잔존 번호) → main session 경유 사용자 결정(옵션 A)에 따라 `(v1.1.0/015 spec)` exact-match 마커 정정 완료, 최종 STALE_SC 0건
+- 설계 문서(plan.md ADR-001~007) 정합성 불일치 0건(test-report.md v1.1)
+
+**해결된 GAP**: 없음(3단계 Design Agent gaps.md — 공백 0건, "§F 회귀위험 2건은 GAP 이 아니라 본 spec 범위 내 구현 태스크(D레이어)로 tasks.md 에 명시" 판정. 5b Test Agent EXECUTION gaps: NONE).
+
+**미해결 GAP / 판정 대기** (Retrospective Agent 위임 / Security Agent 후속 판정 대상):
+- **SEC-015-02/SEC-015-03 최종 판정 대기(필수, 미실행)**: 본 spec 이 두 항목의 백엔드 하드닝(state 서버측 발급·원자적 1회성 검증, redirect_uri fail-safe 조건부 지원)을 완결 구현했으나, **6단계 Security Agent 재감사가 아직 수행되지 않았다**. SC-014(SEC-015-02 RESOLVED 판정)·SC-015(SEC-015-03 RESOLVED 또는 잔존-권고 판정)는 이 재감사 완료 전까지 coverage.md 상 PENDING 으로 유지된다. 본 Docs 단계 직후 이어질 단계.
+- **네이티브 `flutter_web_auth_2` 앱 배선 미완료(범위 외, 운영 셋업 위임)**: 본 spec 이 발급하는 state 값을 네이티브 앱이 실제로 요청·echo 하도록 배선하는 작업은 spec.md 가 명시적으로 범위 외로 위임했다(`StubSocialAuthService` 고정값 유지). 배선 완료 전까지는 본 하드닝이 실사용 트래픽에 작동하지 않는다(실사용 트래픽 자체가 아직 없음, 회귀 없음).
+- **redirect_uri 실제 요구 여부 미확정(범위 외, 운영 셋업 위임)**: FR-007/008 은 코드 레벨로 조건부 준비만 완료했다. 네이버 공식 문서로 최종 요구 여부를 확인하고 필요 시 `NAVER_REDIRECT_URI` 를 설정하는 것은 운영 작업이다.
+- **context.md §2/§4/§6 갱신 필요(문서-갱신-필요)**: `POST /auth/naver/state` 신규 엔드포인트·`oauth-state.service.ts`(§2), `oauth_states` 테이블 신규(32→33테이블·15→16차, §4), SEC-015-02/03 제약 항목 상태 전환(§6, Security 재감사 완료 후 RESOLVED/잔존-권고로 조정) — `gaps.md` GAP-016-01~03 에 기록. Docs Agent 직접 수정 불가(agent-rules.md §3.1) — Retrospective Agent 위임.
+- **infra.md 갱신 필요(문서-갱신-필요)**: `NAVER_REDIRECT_URI`(선택, 미설정=미포함 기본) 환경변수·`20260703070000_add_oauth_states` 마이그레이션을 §7 배포 전 체크리스트에 additive 반영 — `gaps.md` GAP-016-04 에 기록. Docs Agent 직접 수정 불가.
+- **PROC-014 사후 운영 검증 4개 시나리오(범위 외, 운영 셋업 이후 수행)**: state 발급→인증→검증 전체 흐름·state 만료 재시도·redirect_uri 최종 확인·카카오/구글 회귀 확인. 실 크레덴셜 발급 및 네이티브 앱 배선 완료 시점에 수동 점검(spec.md "사후 운영 검증 피드백 사이클" 참조).
+
+**후속 작업 시 주의사항**:
+- **DIFF base 재확정 필요**: 015 가 커밋되지 않은 상태로 016 이 진행되어, `DIFF-016-naver-state-redirect-hardening.md` 의 diff 재생성 명령은 현재 base `6b64c24`(014, 015 와 공유) 로만 기록되어 있다. 015 완료 커밋 생성 후에는 `git diff {015-완료-커밋} -- apps/backend/src/modules/auth/social apps/backend/prisma/migrations/20260703070000_add_oauth_states apps/backend/src/modules/auth/auth.constants.ts apps/backend/src/modules/auth/auth.repository.ts apps/backend/src/modules/auth/dto/auth-response.dto.ts apps/backend/.env.example apps/backend/prisma/schema.prisma apps/backend/src/modules/auth/auth.controller.ts apps/backend/src/modules/auth/auth.module.ts apps/backend/src/modules/auth/social-auth.service.ts apps/backend/src/modules/auth/social/naver.provider.ts` 로 016 단독 diff 를 재산출하고 DIFF-016 을 재생성해야 한다.
+- **SEC-015-02/03 은 아직 "완료"가 아니다**: 본 spec 은 코드 구현·단위 테스트 검증까지 완료했으나, spec.md NFR-006/007(SC-014/015)이 요구하는 **Security Agent 재감사에 의한 최종 RESOLVED 판정은 아직 없다**. 다음 단계(Security Agent)가 이 판정을 완료해야 GAP 이 최종 종결된다.
+- **oauth_states 테이블 운영 관리**: TTL(10분) 경과 행은 발급 시 opportunistic 하게 정리되나(`deleteExpiredOAuthStates`), 별도 스케줄 정리 배치는 없다. 발급 트래픽이 낮은 초기 운영에서는 무방하나, 향후 발급 빈도가 높아지면 테이블 증식 모니터링이 필요할 수 있다(익명 발급 엔드포인트이므로 SEC-004 후속(rate limit)과 동일 축의 잠재 위험 — 위 미해결 GAP 참조).
+- **`OAuthState.provider` 컬럼은 향후 확장 여지로 설계됨**: 현재는 `'naver'` 값만 사용하나(FR-006 — kakao/google 은 검증 대상 아님), 카카오·구글이 향후 code-exchange+state 방식으로 전환될 경우 동일 테이블·서비스를 재사용 가능하도록 provider 파라미터화되어 있다(ADR-007 관련 설계 여지, 별도 spec 필요).
+
+---
+
+## [015-naver-code-exchange] 구현 완료 (v1.2 — SEC-015-01 재작업 반영, 최종 상태)
+
+> **개정 이력**: 본 항목은 6단계 Docs 1차 산출물(naver 자동연동 **허용** 시점) 이후, Security Agent 1차
+> 감사가 SEC-015-01(High, naver 자동연동의 이메일 소유권 미검증 계정 탈취)을 확정하고 사용자 결정으로
+> Development Agent 가 naver 를 `AUTO_LINK_PROVIDERS` 에서 **제외**하는 재작업을 완료함에 따라, 그
+> 최종 코드 상태를 반영하도록 Docs Agent 가 현행화했다(5b Test Agent EXECUTION 재검증 gate: PASS 확인 후).
+>
+> v1.1.0 의 열다섯 번째 차수 — **Naver 소셜 로그인 재도입(서버 authorization code + client_secret 교환 방식)**:
+> 014 가 SEC-001(High, 네이버 공개 API 에 access token 의 app/client 바인딩 검증 수단 부재)을 근거로
+> 이번 릴리즈에서 완전 제외했던 Naver 를, **표준 OAuth 2.0 Authorization Code Grant 의 confidential-client
+> 서버 플로우**로 안전하게 재도입한다(spec.md 배경 및 목적, ADR-001). Flutter 는 access token 을 직접
+> 획득하지 않고 단기 유효한 authorization code 만 획득하여 백엔드에 전달하고, 백엔드가 자신만 보유한
+> `NAVER_CLIENT_SECRET` 으로 code→access_token 교환을 수행하므로 발급 토큰의 DOA 앱 귀속이 프로토콜
+> 수준에서 보장된다 — 이로써 014 GAP-014-08/GAP-014-10 이 지적한 3개 계정 탈취 경로 중 **"제3자 앱이
+> 발급받은 토큰/code 의 재전송"** 위협모델은 소거된다(SEC-001 RESOLVED, spec.md NFR-003 좁은 범위 한정).
+> **카카오·구글은 본 spec 범위 외**(014 v1.3 재감사에서 app_id/aud 대조로 SEC-001 이미 완전 해소,
+> 클라이언트 토큰 검증 방식 무변경, NFR-004/SC-005/SC-019 회귀 방지만 검증).
+> (1) `naver.provider.ts` 재작성 — client-token 검증 → code-exchange(`nid.naver.com/oauth2.0/token` POST
+> form-urlencoded → `openapi.naver.com/v1/nid/me` GET) 전환(FR-002~004, ADR-001/003), (2)
+> `SocialProviderPort.verify(token, context?: {state?, redirectUri?})` optional 2번째 인자 추가 — 카카오·구글
+> 구현체는 시그니처 유지(호출부 조건부 verify 로 무변경, ADR-002/NFR-004), (3) `SocialProviderResolver`·
+> `SocialLoginDto`(`SUPPORTED_PROVIDERS=['kakao','google','naver']`)·`AuthModule` 에 naver 재편입(FR-001) —
+> **naver 로그인 자체(재로그인 경로 3a·신규가입 경로 3c)는 유지**, (4) **`AUTO_LINK_PROVIDERS`
+> (`social-auth.service.ts:30`)는 최종적으로 `new Set(['kakao','google'])` — naver 는 제외** — Security
+> Agent 1차 감사가 확정한 **SEC-015-01(High)**: code-exchange 의 앱바인딩 보증과 이메일 소유권 검증은
+> 서로 독립적인 별개 보증이며, `naver.provider.ts` 에 `google.provider.ts` 의 `email_verified` 에 대응하는
+> 이메일 소유권 검증 필드·로직이 전혀 없어(코드 Read 로 확인), 공격자가 자신의 정규 naver 계정 프로필
+> 이메일에 victim 의 DOA 가입 이메일을 등록하고 정상 code-exchange 로그인을 완료하면 Path 3b(email
+> 자동연동)가 무검증으로 victim 계정에 연동 + JWT 를 발급하는 계정 탈취 취약점을 근거로, naver 를
+> 자동연동 대상에서 제외하고 email 매칭 시 409 Conflict 로 차단하도록 반전 조치했다(FR-006 실동작
+> 변경, ADR-004 무효화, GAP-015-04/SEC-015-01, `social-auth.service.ts` 주석 4곳에 근거 명시). (5) DTO
+> `state?: string` optional 필드 추가 — Flutter 생성 state 를 `SocialCredential`→DTO→`verify` context 로
+> 전달(CSRF, ADR-007, 단 서버측 실질 검증은 SEC-015-02 미해결로 남음), (6) Flutter `_SocialRow` 네이버
+> 버튼 재활성화(`GestureDetector.onTap` + `onNaver`, FR-009) + `SocialAuthService`에 `signInWithNaver()`
+> 추가 — 시스템 브라우저 + 커스텀 URL 스킴(`flutter_web_auth_2` 패키지 도입, 인앱 WebView 금지,
+> ADR-006/FR-010) + 취소(무오류 복귀)/실패(오류 메시지) 처리(FR-011~012). **DB 스키마 변경 없음**
+> (`social_accounts.provider` 문자열 컬럼이 기존 마이그레이션 `20260701064209_add_social_accounts` 그대로
+> 'naver' 값 수용, Database Design Agent 비활성).
+> base `6b64c24`(014 완료 커밋) → working tree(미커밋). 변경 추적:
+> `git diff 6b64c24 -- apps/backend mobile/customer_app` (tracked modified 14 files, +242/-82 — 재작업분
+> `social-auth.service.ts`·`social-auth.service.autolink-policy.spec.ts` 추가 변경 반영, 실측 갱신).
+> 신규(untracked) 파일 **5건**(백엔드 테스트 3건·Flutter 테스트 2건, 재작업으로 회귀 테스트
+> `social-auth.service.naver-autolink-exclusion.spec.ts` 1건 추가)은 git add 후 동 커밋에 포함.
+> **신규 npm 의존 0건**(백엔드는 Node 20 native `fetch` 재사용). **신규 pub 의존 1건**: `flutter_web_auth_2 ^4.1.0`
+> (pubspec 선언만 — 실제 import·SDK 연동은 운영 셋업 단계 deferred, ASM-001, `StubSocialAuthService` 로
+> 파이프라인 검증). 선택 단계: Security Agent 1차 감사 완료(status: BLOCKED, SEC-015-01 High 1건) →
+> 본 재작업 반영 → **Security Agent 재감사(복귀)는 본 Docs 재작업 단계 시점 기준 아직 미실행**(SC-018
+> 최종 판정은 재감사 완료 후 확정, coverage.md v1.1 "DEFERRED (변경 없음 — Security 재감사 대기)").
+
+**변경 파일** (최종, base `6b64c24` 대비):
+
+백엔드 — 수정:
+- `apps/backend/src/modules/auth/auth.controller.ts` (+1/-1): `socialLogin` 에서 `dto.state` 를 `login(dto.provider, dto.token, dto.state)` 로 전달(FR-002/ADR-007)
+- `apps/backend/src/modules/auth/auth.module.ts` (+2/-1): `NaverProvider` import·`providers` 엔트리 복원(014 에서 미와이어했던 것을 재편입, FR-001)
+- `apps/backend/src/modules/auth/dto/social-login.dto.ts` (+15/-5): `SUPPORTED_PROVIDERS`에 `'naver'` 재편입 + `@IsOptional @IsString state?: string` 필드 추가(FR-001, ADR-007 CSRF 전달경로)
+- `apps/backend/src/modules/auth/social-auth.service.ts` (+30/-17, **재작업 포함**): `AUTO_LINK_PROVIDERS = new Set(['kakao','google'])`(naver 제외 — **SEC-015-01/GAP-015-04**), `login(provider, token, state?)` 3번째 인자 추가·조건부 `verify(token)`/`verify(token,{state})` 호출(카카오·구글 무변경, NFR-004), path 3b/3c 분기 주석 4곳에 naver 제외 근거 명시
+- `apps/backend/src/modules/auth/social-auth.service.autolink-policy.spec.ts` (+23/-11, **재작업으로 재반전**): naver 자동연동을 "허용"으로 검증하던 1차 갱신을 **"차단(409 Conflict)"** 재단언으로 되돌림(SC-006, `it.each(['kakao','google'])` 자동연동 유지 + naver 개별 케이스로 분리)
+- `apps/backend/src/modules/auth/social/naver.provider.ts` (+66/-26): client-token 검증 → **code-exchange 재작성**. `ConfigService` 주입, `verify(code, ctx?)` 가 토큰 교환 POST(`nid.naver.com/oauth2.0/token`) + 프로필 GET(`openapi.naver.com/v1/nid/me`) 순차 수행. `client_secret`·`access_token` 지역 변수 한정(비노출, FR-002~004/SC-004/SC-017)
+- `apps/backend/src/modules/auth/social/social-provider.port.ts` (+15/-3): `verify(token: string, context?: SocialVerifyContext): Promise<SocialProfile>` — `SocialVerifyContext = {state?, redirectUri?}` 타입 추가, 2번째 인자 optional(ADR-002, 카카오·구글 구현체 무영향)
+- `apps/backend/src/modules/auth/social/social-provider.resolver.ts` (+4/-5): `NaverProvider` 생성자 주입 + `providers` 맵에 `naver: this.naver` 재편입
+
+백엔드 — 신규:
+- `apps/backend/src/modules/auth/social/naver.provider.spec.ts` (신규, 183줄): code-exchange 단위 테스트 — SC-002~004(정상 흐름·access_token 비노출), SC-003(무효/만료/재사용 code·HTTP 실패·응답 필드 누락 3케이스)
+- `apps/backend/src/modules/auth/social-auth.service.naver.spec.ts` (신규, 280줄, **재작업으로 T-D3 재반전 반영**): naver 계정해석 단위 테스트 — provider 지원목록 진입(SC-001)·재로그인(SC-007)·신규가입(SC-008)·자동연동 **차단(409, SEC-015-01)**·email 미반환 거부(SC-009)·토큰쌍 형식(SC-010, 재로그인·신규가입 2경로 한정)
+- `apps/backend/src/modules/auth/social-auth.service.naver-autolink-exclusion.spec.ts` (**신규, 148줄, 재작업 산출물, SC 비매핑**): SEC-015-01 공격 시나리오 회귀 테스트 — victim 이메일을 자신의 naver 프로필에 등록 후 로그인 시 409 Conflict 로 차단·`createSocialAccount`/`issueTokensForUser` 미호출 확인, path 3a(재로그인) 정책 무관 유지 확인, kakao/google 자동연동 회귀 0 확인(`it.each`)
+
+Flutter — 수정:
+- `mobile/customer_app/lib/core/providers.dart` (+12/-4): `AuthController.socialLogin(provider, token, {String? state})` optional state 파라미터 추가 — 카카오·구글 호출은 state 미전달(무영향, ADR-007)
+- `mobile/customer_app/lib/features/auth/login_screen.dart` (+15/-4): `_SocialRow` 네이버 원형 버튼(`GestureDetector.onTap`) + `onNaver` 콜백 재활성화(FR-009, SC-011)
+- `mobile/customer_app/lib/features/auth/social_auth_service.dart` (+14/-5): `abstract SocialAuthService` 에 `signInWithNaver()` 추가, `SocialCredential` 에 `final String? state` 필드 추가, `StubSocialAuthService.signInWithNaver()` 스텁 구현(GAP-015-02 Dart breaking change 대응 포함)
+- `mobile/customer_app/pubspec.lock` (+32): `flutter_web_auth_2` 전이 의존성 잠금
+- `mobile/customer_app/pubspec.yaml` (+3): `flutter_web_auth_2: ^4.1.0` 선언(ADR-006, 실사용 코드는 운영 셋업 deferred·ASM-001)
+- `mobile/customer_app/test/features/social_login_flow_test.dart` (+10, GAP-015-02 대응): `_StubSocialAuthService`(014 산출물)에 `signInWithNaver()` override 최소 추가 — Dart `implements` breaking change 컴파일 회복, 기존 SC 단언·로직 무변경. **본 재작업 무변경**(Flutter 코드는 재작업 범위 밖).
+
+Flutter — 신규:
+- `mobile/customer_app/test/features/naver_social_login_static_test.dart` (신규, 191줄): SC-011·012·017·020 정적 검증(버튼 존재·인앱 WebView 미사용·env 크레덴셜·flutter analyze 마커)
+- `mobile/customer_app/test/features/naver_social_login_flow_test.dart` (신규, 277줄): SC-013~015 흐름 테스트(취소·실패·성공)
+
+**검증** (5b Test Agent EXECUTION 재검증, 최종):
+- 백엔드 naver + regression 재실행: `naver.provider.spec.ts`+`social-auth.service.naver.spec.ts`+`social-auth.service.autolink-policy.spec.ts`+`social-auth.service.naver-autolink-exclusion.spec.ts` **4 suites/21 tests PASS**
+- 백엔드 회귀(smoke_tests, 014 카카오·구글): `social-auth.service.spec.ts`+`kakao.provider.spec.ts`+`auth.service.spec.ts` 3 suites/37 tests PASS(SC-005·SC-019, 회귀 0)
+- 백엔드 전체: **33 suites / 323 tests PASS**(재작업으로 신규 회귀 파일 1건 추가 반영, 1차 32 suites/321 tests 대비 net +1 suite/+2 tests — naver 자동연동 성공/토큰쌍 SC 단언 2건 제거 + 신규 파일 3케이스 추가 상쇄 결과). `pnpm exec tsc --noEmit` 오류 0건
+- Flutter naver 신규: `naver_social_login_static_test.dart`+`naver_social_login_flow_test.dart` 7 tests PASS(본 재작업 무변경 재확인)
+- Flutter 회귀(014): `social_login_flow_test.dart`+`social_login_static_test.dart` 4 tests PASS. Flutter 전체 `flutter test` All tests passed!, `flutter analyze --no-pub lib/` 0 issues(SC-020)
+- **SC-001~020 재판정**: 18 PASS(순수) + **2 PASS\*** (SC-006/SC-010 — naver 자동연동 Out of Scope 반영 재판정, spec.md 원문 문언과의 불일치는 GAP-015-05 로 추적) + 2 DEFERRED(SC-016 성능 e2e-docker·SC-018 Security 재감사 대기)
+- naver 공격 시나리오(SEC-015-01) 409 차단·`createSocialAccount`/`issueTokensForUser` 미호출 production 실동작 재현 확인. kakao/google 자동연동 회귀 0(이중 확인: `it.each` 신규 + 기존 37 tests)
+- `verify(` 호출부 단일 지점(`social-auth.service.ts`) 조건부 확장 확인 — Breaking 잔여 참조 0건(카카오·구글 기존 호출 경로 무변경 코드 직접 대조)
+- Dart breaking change(GAP-015-02, `implements SocialAuthService` 3개소) 전건 override 확인 — `flutter test` 전체 PASS 로 컴파일 정합 재확인
+- STALE_SC 0건(coverage.md v1.1, PATCH-A18 silence 규칙 적용 후, run-005 대비 변경 없음)
+
+**해결된 GAP**:
+- **GAP-015-02 해소**: tasks.md T-C2 설계 시 Dart `implements` 시맨틱상 `abstract SocialAuthService.signInWithNaver()` 추가가 breaking change 임을 §F 절차가 식별하지 못해 4단계 구현 중 컴파일 오류로 발견됨. `_StubSocialAuthService`(014 `social_login_flow_test.dart`)에 최소 override 추가로 컴파일 회복(기존 SC 단언·로직 무변경). Development Agent 처리, Test Agent(EXECUTION) 5b 재검증 동의.
+- **GAP-015-04 처리됨(Development, Security 재감사 대기)**: **SEC-015-01(High)** — naver 자동연동(Path 3b)이 이메일 소유권을 검증하지 않아 공격자가 자신의 정규 naver 계정에 victim 이메일을 등록하고 정상 로그인만으로 victim 계정을 탈취 가능함을 Security Agent 1차 감사가 확정. 사용자 결정으로 naver 를 `AUTO_LINK_PROVIDERS` 에서 제외(재로그인 3a·신규가입 3c 는 유지)하는 수정 방향 1 을 채택, Development Agent 가 `social-auth.service.ts` 반전 + 주석 4곳 갱신 + 회귀 테스트(`social-auth.service.naver-autolink-exclusion.spec.ts`) 신규 추가로 처리 완료. **Security Agent 의 복귀 재감사(SC-018 최종 판정)는 아직 미실행** — 6단계 Docs 재작업 다음으로 이어질 단계.
+
+**미해결 GAP / 미완료 감사** (Retrospective Agent 위임 / Security Agent 후속 검토 대상):
+- **Security Agent 재감사 (필수, 미실행)**: GAP-015-04/SEC-015-01 조치(naver AUTO_LINK 제외) 이후의 코드 상태를 Security Agent 가 아직 재감사하지 않았다. SC-018(Critical/High 0건 최종 판정)은 이 재감사 완료 전까지 DEFERRED 로 유지된다. 본 Docs 재작업 직후 이어질 단계.
+- **SEC-015-02 (Medium, 미해결)**: state(CSRF) 파라미터를 백엔드가 클라이언트 값 그대로 전달만 하고 자체 검증하지 않음. 운영 셋업(네이티브 `flutter_web_auth_2` 연동) 착수 전 클라이언트 측 state 생성·검증 로직 구현 필수(security-report.md 권고 2, PROC-013-03 — context.md §6 등재 권고, Retrospective 위임).
+- **SEC-015-03 (Low, 미해결)**: 네이버 토큰 교환 요청에 `redirect_uri` 미포함. 운영 크레덴셜 등록 시 공식 문서로 요구 여부 최종 확인 필요(security-report.md 권고, PROC-014 사후 운영 검증 대상).
+- **GAP-015-01 (OPEN, 문서-갱신-필요)**: infra.md §5(연결 실패 재시도)·§7(배포 전 체크리스트)·§8(알려진 인프라 제약)에 네이버 아웃바운드 엔드포인트(`nid.naver.com/oauth2.0/token` 토큰 교환·`openapi.naver.com/v1/nid/me` 프로필)·`NAVER_CLIENT_ID`/`NAVER_CLIENT_SECRET` fail-closed·활성 provider 3종(카카오·구글·네이버, 단 자동연동은 카카오·구글 2종 한정) 갱신 필요(014 GAP-014-06 당시 naver 미활성으로 등재되지 않았던 것의 역갱신 포함). Docs Agent 직접 수정 불가(agent-rules.md §3.1) — 상세는 `docs/specs/v1.1.0/015-naver-code-exchange/gaps.md` GAP-015-01 참조.
+- **GAP-015-03 (문서-갱신-필요, Docs Agent 발견)**: context.md §2(핵심 모듈 목록 — `social/` 행이 "NaverProvider 는 파일 보존·미와이어" 로 서술, 코드 검증 결과 `AuthModule.providers`·`SocialProviderResolver.providers` 맵에 `NaverProvider` 실 등록 확인되어 불일치)·§4(데이터 모델 — "활성 provider 카카오·구글(네이버 제외 — SEC-001)" 서술이 부정확 — **로그인 provider 는 3종 활성이나 자동연동(AUTO_LINK)은 카카오·구글 2종 한정(naver 는 SEC-015-01 로 제외)** 으로 두 구분을 분리 서술 필요)·§6(알려진 제약 — GAP-014-06 행에 naver 아웃바운드 2건 추가 필요) 갱신 필요. §7 갱신 이력에 015 신규 행 추가 권고. 상세는 `docs/specs/v1.1.0/015-naver-code-exchange/gaps.md` GAP-015-03 참조(코드 검증 완료).
+- **GAP-015-05 (신규, 문서-갱신-필요, spec-text 불일치, 5a Test Agent 발견)**: GAP-015-04 결정(naver AUTO_LINK 제외)으로 spec.md **SC-006**("... 자동 연동되고 JWT 가 반환된다")·**SC-010**("SC-006/007/008 세 경로 모두 ... 토큰 반환")의 naver 관련 원문 문언이 실제 동작(자동연동 시 409 Conflict 거부, 2경로만 토큰 반환)과 더 이상 일치하지 않는다. 코드·테스트는 이미 안전하게 동기화되었으나(coverage.md v1.1 "PASS\*" 표기), spec.md 원문 자체는 Test Agent 권한 밖(agent-rules.md §3.1)이라 미수정 — Spec Agent 복귀 또는 후속 patch spec 에서 SC-006/010 문언 정정 필요. 상세는 gaps.md GAP-015-05 참조.
+- **PKCE 미도입 (범위 외, 차후 spec)**: 네이버 오픈API PKCE 지원 여부 미확인(`[TO-VERIFY]`, ASM-003 "미지원 전제"로 확정). 지원 확인 시 별도 spec 재검토(coverage-gap.md 참고 항목).
+- **SC-016 실 성능 측정 (범위 외, 운영 위임)**: P95 3초 실 OAuth 흐름 측정 — 실 크레덴셜 발급 후 사후 운영 검증(PROC-014 시나리오 1) 병행 측정.
+
+**후속 작업 시 주의사항**:
+- **naver 는 로그인은 되지만 이메일 자동연동은 되지 않는다(SEC-015-01)**: `AUTO_LINK_PROVIDERS`(`social-auth.service.ts:30`)가 최종적으로 `new Set(['kakao','google'])` 로 확정되었다 — naver 는 `providerId` 매칭 재로그인(path 3a)·신규 독립계정 생성(path 3c)만 허용되며, 기존 계정과 이메일이 같을 경우 **자동 연동하지 않고 409 Conflict 로 거부**한다. 이는 naver 오픈API 가 `email_verified` 에 대응하는 이메일 소유권 검증 필드를 제공하지 않기 때문이며(`google.provider.ts` 는 `email_verified==='true'` 검증 보유, `naver.provider.ts`/`kakao.provider.ts` 는 부재), **naver 자동연동을 재도입하려면 별도 spec 에서 서버측 이메일 소유권 검증(예: 네이버 인증 메일 발송·기존 계정 비밀번호 재확인) 메커니즘을 먼저 설계해야 한다.**
+- **v1.1.0/014 spec.md "Naver 완전 제외" 정합화 노트가 본 015 로 재도입됨**: 014 spec.md(FR-001/NFR-004/SC-009/SC-013/SC-018/범위 외 절)와 014 CHANGES.md GAP-014-09 관찰은 **그 시점(014 완료 시점)에는 사실**이었으며 이후 v1.1.0/015 가 신규 spec 으로 naver 를 재도입한 것이다. 014 spec.md 는 작성 당시 상태를 기록한 문서이므로 **수정 대상이 아니다**(01-design-rules.md §2 "docs/specs/ 아래 기존 spec 문서는 수정하지 않는다"). 본 015 spec.md 도 SC-006/010 문언이 재작업 이후 실동작과 불일치하는 상태로 병존한다(GAP-015-05, Spec Agent 복귀 시 정정 권고).
+- **spec.md SC-006/SC-010 문언 정정 필요(GAP-015-05)**: naver 자동연동 관련 원문("... 자동 연동되고 JWT 가 반환된다", "세 경로 모두 ... 토큰 반환")이 SEC-015-01 반전 이후 실동작과 불일치. Spec Agent 복귀 또는 후속 patch spec 에서 정정 권고(코드·테스트는 이미 안전 상태로 동기화 완료 — 문서 정합성 항목).
+- **Security Agent 재감사 필수**: 6단계 Docs 재작업 다음으로 Security Agent 복귀 재감사가 이어져야 SC-018 최종 판정(Critical/High 0건 확인)이 완료된다. SEC-015-02(Medium)·SEC-015-03(Low)도 별도 처리 필요(위 미해결 GAP 참조).
+- **NAVER_CLIENT_ID/NAVER_CLIENT_SECRET Fly secret 필수(운영 셋업 단계)**: `.env.example`에 014 부터 placeholder 로 존재(변경 불요). `naver.provider.ts` 는 `ConfigService.getOrThrow` 호출 시점 지연 조회(fail-closed) — 미설정 시 앱 기동은 정상이나 네이버 로그인 자체는 실패. 실 크레덴셜 발급·네이버 개발자센터 앱 등록·redirect URI 등록은 spec.md PROC-014 "사후 운영 검증" 참조.
+- **Flutter 실 SDK 딥링크 연동 미완료**: `flutter_web_auth_2` 는 pubspec 선언만 완료(실제 import·네이티브 URL 스킴 설정(Info.plist·AndroidManifest)·정확한 스킴 문자열 확정은 ASM-001 deferred). `StubSocialAuthService.signInWithNaver()` 는 고정 code·state 반환 스텁 — 실 SDK 로 교체하는 후속 작업 필요(013/014 이월 항목과 동일 패턴). state 서버측 실질 검증(SEC-015-02)도 이 시점에 함께 구현 필요.
+- **GAP-015-01/03/05 미해결**: infra.md(GAP-015-01)·context.md(GAP-015-03)·spec.md(GAP-015-05) 갱신 — Retrospective/Spec Agent 위임. 상세 gaps.md 참조.
+
+---
+
 ## [014-social-login] 구현 완료
 
 > v1.1.0 의 열네 번째 차수 — **소셜 로그인(최종: 카카오·구글 — Naver 는 SEC-001/GAP-014-10 근거로

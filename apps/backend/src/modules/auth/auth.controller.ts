@@ -13,6 +13,7 @@ import { CurrentUser } from '../../shared/auth/current-user.decorator';
 import { JwtAuthGuard } from '../../shared/auth/jwt-auth.guard';
 import { AuthService } from './auth.service';
 import { SocialAuthService } from './social-auth.service';
+import { OAuthStateService } from './social/oauth-state.service';
 import { LoginDto } from './dto/login.dto';
 import { RefreshDto } from './dto/refresh.dto';
 import { RegisterDto } from './dto/register.dto';
@@ -24,6 +25,7 @@ import {
   AuthProfileResponse,
   FindEmailResponse,
   LoginResponse,
+  NaverStateResponse,
   RefreshResponse,
   RegisterResponse,
   SocialLoginResponse,
@@ -34,6 +36,7 @@ export class AuthController {
   constructor(
     private readonly authService: AuthService,
     private readonly socialAuthService: SocialAuthService,
+    private readonly oauthStateService: OAuthStateService,
   ) {}
 
   @Post('register')
@@ -54,7 +57,15 @@ export class AuthController {
   @ApiOkResponse({ type: SocialLoginResponse })
   async socialLogin(@Body() dto: SocialLoginDto) {
     // JWT 가드 불필요 — 익명 엔드포인트 (plan.md PATCH-001/ADR-001)
-    return this.socialAuthService.login(dto.provider, dto.token);
+    return this.socialAuthService.login(dto.provider, dto.token, dto.state);
+  }
+
+  @Post('naver/state')
+  @HttpCode(HttpStatus.OK)
+  @ApiOkResponse({ type: NaverStateResponse })
+  async naverState() {
+    // JWT 가드 불필요 — 로그인 이전 CSRF nonce 발급(익명 엔드포인트, 기존 social-login 과 동일 패턴)
+    return this.oauthStateService.issue('naver');
   }
 
   @Post('refresh')

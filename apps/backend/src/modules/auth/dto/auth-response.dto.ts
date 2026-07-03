@@ -51,3 +51,9 @@ export class SocialLoginResponse {
   @ApiProperty({ description: 'JWT refresh token' })
   refreshToken!: string;
 }
+
+/** 네이버 code-exchange CSRF state 발급 응답. */
+export class NaverStateResponse {
+  @ApiProperty({ description: 'CSRF 방지용 state 값(base64url, 1회성)' })
+  state!: string;
+}

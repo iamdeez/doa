@@ -43,6 +43,9 @@ dependencies:
   uuid: ^4.5.3
   url_launcher: ^6.3.1
   shared_preferences: ^2.5.3
+  # naver 소셜 로그인 authorization code 획득 — 시스템 브라우저 + 커스텀 URL 스킴 콜백 캡처(ADR-006).
+  # 실제 사용 코드는 운영 셋업(URL 스킴·네이티브 설정 확정) 이후 추가(ASM-001, deferred).
+  flutter_web_auth_2: ^4.1.0
 
 dev_dependencies:
   flutter_test:

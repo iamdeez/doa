@@ -12,6 +12,11 @@
  * SC-009(naver provider verify) — 범위 외: 사용자 결정으로 Naver 소셜 로그인을
  * 이번 릴리즈에서 완전 제외(SEC-001/GAP-014-10 — app-binding 검증 수단 부재로
  * 계정 탈취 잔존 위험 근본 해소 불가). 별도 spec에서 재검토.
+ *
+ * [§F 마이그레이션, v1.1.0/016 SC-011] SocialAuthService 생성자에 OAuthStateService
+ * 4번째 인자가 추가되어 DI mock 을 등록한다. 이 파일은 kakao/google 만 다루며 해당
+ * provider 는 state 분기 자체에 진입하지 않으므로(FR-006) mock 동작은 불필요하고
+ * DI 해석용 provider 등록만 필요하다.
  */
 
 import { Test, TestingModule } from '@nestjs/testing';
@@ -23,6 +28,7 @@ import { SocialAuthService } from './social-auth.service';
 import { SocialProviderResolver } from './social/social-provider.resolver';
 import { AuthRepository } from './auth.repository';
 import { AuthService } from './auth.service';
+import { OAuthStateService } from './social/oauth-state.service';
 
 // ─── Fixtures ───────────────────────────────────────────────────────────────
 
@@ -80,6 +86,10 @@ const makeMockAuthRepository = () => ({
 const makeMockAuthService = () => ({
   issueTokensForUser: jest.fn().mockResolvedValue(TOKEN_RESULT),
 });
+const makeMockOAuthStateService = () => ({
+  issue: jest.fn(),
+  consume: jest.fn(),
+});
 
 // ─── Tests ───────────────────────────────────────────────────────────────────
 
@@ -89,12 +99,14 @@ describe('SocialAuthService', () => {
   let mockSocialProviderPort: ReturnType<typeof makeMockSocialProviderPort>;
   let mockAuthRepository: ReturnType<typeof makeMockAuthRepository>;
   let mockAuthService: ReturnType<typeof makeMockAuthService>;
+  let mockOAuthStateService: ReturnType<typeof makeMockOAuthStateService>;
 
   beforeEach(async () => {
     mockSocialProviderResolver = makeMockSocialProviderResolver();
     mockSocialProviderPort = makeMockSocialProviderPort();
     mockAuthRepository = makeMockAuthRepository();
     mockAuthService = makeMockAuthService();
+    mockOAuthStateService = makeMockOAuthStateService();
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -102,6 +114,7 @@ describe('SocialAuthService', () => {
         { provide: SocialProviderResolver, useValue: mockSocialProviderResolver },
         { provide: AuthRepository, useValue: mockAuthRepository },
         { provide: AuthService, useValue: mockAuthService },
+        { provide: OAuthStateService, useValue: mockOAuthStateService },
       ],
     }).compile();
 

@@ -157,6 +157,21 @@ model PasswordResetOtp {
   @@schema("users")
 }
 
+/// 네이버 code-exchange CSRF 방지용 서버 발급 state nonce (016).
+/// 발급 시 INSERT, 검증 시 조건부 DELETE(delete-on-consume, 1회성 — FR-005).
+/// 만료 행은 발급 시 opportunistic 정리. CSRF nonce 이므로 소비 이력 감사 불요.
+model OAuthState {
+  id        String   @id @default(cuid())
+  state     String   @unique          // base64url 난수(node:crypto randomBytes(32)) — NFR-002
+  provider  String                    // 'naver'(현재) — 향후 provider 확장 여지
+  expiresAt DateTime                   // now + NAVER_STATE_TTL_MIN — FR-002 TTL
+  createdAt DateTime @default(now())
+
+  @@index([expiresAt])                 // 만료 정리(deleteExpiredOAuthStates) 인덱스
+  @@map("oauth_states")
+  @@schema("users")
+}
+
 // ============================================================
 // products 스키마 — Stage 2 실체화 테이블
 // ============================================================

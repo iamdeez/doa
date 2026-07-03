@@ -1,22 +1,24 @@
 /// 소셜 로그인 제공자로부터 획득한 토큰 자격증명.
+/// [state] 는 naver code-exchange 전용 CSRF 파라미터(ADR-007) — kakao·google 은 null.
 class SocialCredential {
   final String provider;
   final String token;
+  final String? state;
 
-  const SocialCredential({required this.provider, required this.token});
+  const SocialCredential({required this.provider, required this.token, this.state});
 }
 
 /// 소셜 SDK 연동 추상 인터페이스.
 /// 실제 구현(KakaoSocialAuthService 등)은 각 플랫폼 SDK 패키지를 별도로 추가한 후 구현한다.
 /// 테스트/개발 환경에서는 [StubSocialAuthService]를 사용한다.
 ///
-/// Naver 는 이번 릴리즈에서 제외되었다(SEC-001/GAP-014-08/GAP-014-10 — 네이버 오픈API가
-/// app/client 바인딩 검증 수단을 제공하지 않아 재로그인 경로의 계정 탈취를 차단할 수
-/// 없음). 백엔드도 naver 를 지원 provider 목록에서 제외했으므로(SocialLoginDto), 이
-/// 인터페이스에 signInWithNaver 를 추가하지 않는다.
+/// naver 는 시스템 브라우저 + 커스텀 URL 스킴(`flutter_web_auth_2`)으로 authorization code 를
+/// 획득한다(인앱 내장 브라우저 임베드 금지, ADR-006). 백엔드가 보유한 전용 크레덴셜로 code 를
+/// 교환하므로 [signInWithNaver] 가 반환하는 [SocialCredential.token] 은 authorization code 다.
 abstract class SocialAuthService {
   Future<SocialCredential> signInWithKakao();
   Future<SocialCredential> signInWithGoogle();
+  Future<SocialCredential> signInWithNaver();
 }
 
 /// 개발/테스트 환경 스텁 — 실제 SDK 없이 고정 토큰 반환.
@@ -28,6 +30,13 @@ class StubSocialAuthService implements SocialAuthService {
   @override
   Future<SocialCredential> signInWithGoogle() async =>
       const SocialCredential(provider: 'google', token: 'stub-google-token');
+
+  @override
+  Future<SocialCredential> signInWithNaver() async => const SocialCredential(
+        provider: 'naver',
+        token: 'stub-naver-code',
+        state: 'stub-state',
+      );
 }
 
 /// 사용자가 소셜 로그인을 취소했을 때 던지는 예외.
