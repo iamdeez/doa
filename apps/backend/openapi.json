@@ -54,7 +54,14 @@
         ],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderListResponse"
+                }
+              }
+            }
           }
         },
         "summary": "GET /orders — 내 주문 목록",
@@ -82,7 +89,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object"
+                  "$ref": "#/components/schemas/OrderDetailResponse"
                 }
               }
             }
@@ -419,7 +426,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object"
+                  "$ref": "#/components/schemas/ProductListResponse"
                 }
               }
             }
@@ -471,7 +478,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object"
+                  "$ref": "#/components/schemas/ProductDetailResponse"
                 }
               }
             }
@@ -739,7 +746,17 @@
         "parameters": [],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/CategoryResponse"
+                  }
+                }
+              }
+            }
           }
         },
         "tags": [
@@ -832,7 +849,14 @@
         "parameters": [],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CartResponse"
+                }
+              }
+            }
           }
         },
         "summary": "GET /cart — 장바구니 조회",
@@ -863,7 +887,7 @@
                 "schema": {
                   "type": "array",
                   "items": {
-                    "type": "object"
+                    "$ref": "#/components/schemas/CartItemResponse"
                   }
                 }
               }
@@ -907,7 +931,7 @@
                 "schema": {
                   "type": "array",
                   "items": {
-                    "type": "object"
+                    "$ref": "#/components/schemas/CartItemResponse"
                   }
                 }
               }
@@ -957,8 +981,15 @@
           }
         },
         "responses": {
-          "201": {
-            "description": ""
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CouponResponse"
+                }
+              }
+            }
           }
         },
         "summary": "POST /admin/coupons — 관리자 쿠폰 생성 (FR-001)",
@@ -990,7 +1021,14 @@
         ],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CouponListResponse"
+                }
+              }
+            }
           }
         },
         "summary": "GET /admin/coupons — 관리자 쿠폰 목록 (FR-007)",
@@ -1023,12 +1061,12 @@
           }
         },
         "responses": {
-          "201": {
+          "200": {
             "description": "",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object"
+                  "$ref": "#/components/schemas/UserCouponResponse"
                 }
               }
             }
@@ -1055,8 +1093,15 @@
           }
         },
         "responses": {
-          "201": {
-            "description": ""
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CouponResponse"
+                }
+              }
+            }
           }
         },
         "summary": "POST /sellers/me/coupons — 판매자 쿠폰 생성 (FR-002)",
@@ -1088,7 +1133,14 @@
         ],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CouponListResponse"
+                }
+              }
+            }
           }
         },
         "summary": "GET /sellers/me/coupons — 판매자 쿠폰 목록 (FR-006)",
@@ -1121,12 +1173,12 @@
           }
         },
         "responses": {
-          "201": {
+          "200": {
             "description": "",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object"
+                  "$ref": "#/components/schemas/UserCouponResponse"
                 }
               }
             }
@@ -1164,7 +1216,7 @@
                 "schema": {
                   "type": "array",
                   "items": {
-                    "type": "object"
+                    "$ref": "#/components/schemas/UserCouponResponse"
                   }
                 }
               }
@@ -1240,12 +1292,12 @@
           }
         },
         "responses": {
-          "201": {
+          "200": {
             "description": "",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object"
+                  "$ref": "#/components/schemas/RegisterResponse"
                 }
               }
             }
@@ -1276,7 +1328,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object"
+                  "$ref": "#/components/schemas/LoginResponse"
                 }
               }
             }
@@ -1307,7 +1359,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object"
+                  "$ref": "#/components/schemas/RefreshResponse"
                 }
               }
             }
@@ -1352,7 +1404,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object"
+                  "$ref": "#/components/schemas/AuthProfileResponse"
                 }
               }
             }
@@ -1373,7 +1425,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object"
+                  "$ref": "#/components/schemas/UserProfileResponse"
                 }
               }
             }
@@ -1402,7 +1454,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object"
+                  "$ref": "#/components/schemas/UserProfileResponse"
                 }
               }
             }
@@ -1425,7 +1477,7 @@
                 "schema": {
                   "type": "array",
                   "items": {
-                    "type": "object"
+                    "$ref": "#/components/schemas/AddressResponse"
                   }
                 }
               }
@@ -1450,12 +1502,12 @@
           }
         },
         "responses": {
-          "201": {
+          "200": {
             "description": "",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object"
+                  "$ref": "#/components/schemas/AddressResponse"
                 }
               }
             }
@@ -1495,7 +1547,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object"
+                  "$ref": "#/components/schemas/AddressResponse"
                 }
               }
             }
@@ -1562,7 +1614,7 @@
                 "schema": {
                   "type": "array",
                   "items": {
-                    "type": "object"
+                    "$ref": "#/components/schemas/WishlistResponse"
                   }
                 }
               }
@@ -1587,12 +1639,12 @@
           }
         },
         "responses": {
-          "201": {
+          "200": {
             "description": "",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object"
+                  "$ref": "#/components/schemas/WishlistResponse"
                 }
               }
             }
@@ -1638,7 +1690,7 @@
                 "schema": {
                   "type": "array",
                   "items": {
-                    "type": "object"
+                    "$ref": "#/components/schemas/RecentViewResponse"
                   }
                 }
               }
@@ -1665,8 +1717,15 @@
           }
         },
         "responses": {
-          "201": {
-            "description": ""
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShipmentResponse"
+                }
+              }
+            }
           }
         },
         "summary": "POST /shipments — 송장 등록 (APPROVED 판매자)",
@@ -1688,11 +1747,11 @@
         ],
         "responses": {
           "200": {
-            "description": "",
+            "description": "송장 미존재 시 null",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object"
+                  "$ref": "#/components/schemas/ShipmentResponse"
                 }
               }
             }
@@ -1729,7 +1788,14 @@
         },
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShipmentResponse"
+                }
+              }
+            }
           }
         },
         "summary": "PATCH /shipments/:id/status — 배송 상태 업데이트 (판매자)",
@@ -1753,7 +1819,17 @@
         ],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ShipmentTrackingResponse"
+                  }
+                }
+              }
+            }
           }
         },
         "summary": "GET /shipments/:id/tracking — 배송 추적 조회 (구매자 본인 또는 판매자)",
@@ -1798,7 +1874,17 @@
         "parameters": [],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/SettlementResponse"
+                  }
+                }
+              }
+            }
           }
         },
         "summary": "GET /settlements — 판매자 본인 정산 내역 (본인만)",
@@ -1813,7 +1899,17 @@
         "parameters": [],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/SettlementResponse"
+                  }
+                }
+              }
+            }
           }
         },
         "summary": "GET /admin/settlements — 전체 정산 내역 (관리자)",
@@ -1837,8 +1933,15 @@
           }
         },
         "responses": {
-          "201": {
-            "description": ""
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewResponse"
+                }
+              }
+            }
           }
         },
         "summary": "POST /reviews — 리뷰 작성 (FR-021~FR-023)",
@@ -1872,7 +1975,14 @@
         },
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewResponse"
+                }
+              }
+            }
           }
         },
         "summary": "PATCH /reviews/:id — 리뷰 수정 (FR-024)",
@@ -1928,7 +2038,14 @@
         ],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewListResponse"
+                }
+              }
+            }
           }
         },
         "summary": "GET /reviews/me — 내 리뷰 목록 (FR-026)",
@@ -1970,7 +2087,14 @@
         ],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewListResponse"
+                }
+              }
+            }
           }
         },
         "summary": "GET /products/:productId/reviews — 상품 리뷰 목록 (FR-025)",
@@ -2056,7 +2180,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object"
+                  "$ref": "#/components/schemas/SearchProductsResponse"
                 }
               }
             }
@@ -2097,7 +2221,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object"
+                  "$ref": "#/components/schemas/NotificationListResponse"
                 }
               }
             }
@@ -2115,7 +2239,14 @@
         "parameters": [],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarkAllReadResponse"
+                }
+              }
+            }
           }
         },
         "summary": "PATCH /notifications/read-all — 본인 전체 읽음",
@@ -2139,7 +2270,14 @@
         ],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotificationResponse"
+                }
+              }
+            }
           }
         },
         "summary": "PATCH /notifications/:id/read — 본인 알림 읽음 처리",
@@ -2275,8 +2413,15 @@
           }
         },
         "responses": {
-          "201": {
-            "description": ""
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BannerResponse"
+                }
+              }
+            }
           }
         },
         "summary": "POST /admin/banners — 배너 생성",
@@ -2289,7 +2434,17 @@
         "parameters": [],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/BannerResponse"
+                  }
+                }
+              }
+            }
           }
         },
         "summary": "GET /admin/banners — 전체 목록 (관리자)",
@@ -2323,7 +2478,14 @@
         },
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BannerResponse"
+                }
+              }
+            }
           }
         },
         "summary": "PATCH /admin/banners/:id — 배너 부분 수정",
@@ -2360,7 +2522,17 @@
         "parameters": [],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/BannerResponse"
+                  }
+                }
+              }
+            }
           }
         },
         "summary": "GET /banners — 활성 + 노출기간 내 배너만 sortOrder 순 (공개, 인증 불필요)",
@@ -2379,7 +2551,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object"
+                  "$ref": "#/components/schemas/PlatformOverviewResponse"
                 }
               }
             }
@@ -2401,7 +2573,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object"
+                  "$ref": "#/components/schemas/SellerStatsResponse"
                 }
               }
             }
@@ -2425,7 +2597,7 @@
                 "schema": {
                   "type": "array",
                   "items": {
-                    "type": "object"
+                    "$ref": "#/components/schemas/SellerProfileResponse"
                   }
                 }
               }
@@ -2457,7 +2629,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object"
+                  "$ref": "#/components/schemas/SellerProfileResponse"
                 }
               }
             }
@@ -2492,7 +2664,14 @@
         ],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminUserListResponse"
+                }
+              }
+            }
           }
         },
         "summary": "GET /admin/users — 사용자 목록 (cursor 페이지네이션)",
@@ -2516,7 +2695,17 @@
         ],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AdminAuditLogResponse"
+                  }
+                }
+              }
+            }
           }
         },
         "summary": "GET /admin/audit-logs — 관리자 조치 감사 로그 (최신순, 013)",
@@ -2581,6 +2770,239 @@
           "shippingAddress"
         ]
       },
+      "OrderAddressSnapshotResponse": {
+        "type": "object",
+        "properties": {
+          "recipientName": {
+            "type": "string"
+          },
+          "phone": {
+            "type": "string"
+          },
+          "zipCode": {
+            "type": "string"
+          },
+          "address1": {
+            "type": "string"
+          },
+          "address2": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "recipientName",
+          "phone",
+          "zipCode",
+          "address1"
+        ]
+      },
+      "OrderResponse": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "userId": {
+            "type": "string",
+            "description": "cross-schema plain String — users.users.id (P-001)"
+          },
+          "status": {
+            "enum": [
+              "pending",
+              "confirmed",
+              "preparing",
+              "shipped",
+              "delivered",
+              "completed",
+              "cancelled"
+            ],
+            "type": "string"
+          },
+          "totalAmount": {
+            "type": "string",
+            "example": "30000.00",
+            "description": "금전 — 총 주문 금액 (P-005)"
+          },
+          "discountAmount": {
+            "type": "string",
+            "example": "0",
+            "description": "금전 — 할인 금액 (P-005)"
+          },
+          "shippingAddressSnapshot": {
+            "description": "주문 시점 배송지 스냅샷 (FR-016)",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/OrderAddressSnapshotResponse"
+              }
+            ]
+          },
+          "deliveredAt": {
+            "type": "string",
+            "nullable": true,
+            "format": "date-time"
+          },
+          "completedAt": {
+            "type": "string",
+            "nullable": true,
+            "format": "date-time"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "userId",
+          "status",
+          "totalAmount",
+          "discountAmount",
+          "shippingAddressSnapshot",
+          "createdAt"
+        ]
+      },
+      "OrderListResponse": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OrderResponse"
+            }
+          },
+          "nextCursor": {
+            "type": "string",
+            "nullable": true,
+            "description": "다음 페이지 cursor (없으면 null)"
+          }
+        },
+        "required": [
+          "items"
+        ]
+      },
+      "OrderItemResponse": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "orderId": {
+            "type": "string"
+          },
+          "variantId": {
+            "type": "string"
+          },
+          "productId": {
+            "type": "string"
+          },
+          "sellerId": {
+            "type": "string",
+            "description": "cross-schema plain String — users.sellers.id (P-001)"
+          },
+          "quantity": {
+            "type": "number"
+          },
+          "unitPrice": {
+            "type": "string",
+            "example": "30000.00",
+            "description": "금전 — 주문 시점 단가 스냅샷 (P-005)"
+          },
+          "optionName": {
+            "type": "string"
+          },
+          "optionValue": {
+            "type": "string"
+          },
+          "productTitle": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "orderId",
+          "variantId",
+          "productId",
+          "sellerId",
+          "quantity",
+          "unitPrice",
+          "optionName",
+          "optionValue",
+          "productTitle"
+        ]
+      },
+      "OrderDetailResponse": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "userId": {
+            "type": "string",
+            "description": "cross-schema plain String — users.users.id (P-001)"
+          },
+          "status": {
+            "enum": [
+              "pending",
+              "confirmed",
+              "preparing",
+              "shipped",
+              "delivered",
+              "completed",
+              "cancelled"
+            ],
+            "type": "string"
+          },
+          "totalAmount": {
+            "type": "string",
+            "example": "30000.00",
+            "description": "금전 — 총 주문 금액 (P-005)"
+          },
+          "discountAmount": {
+            "type": "string",
+            "example": "0",
+            "description": "금전 — 할인 금액 (P-005)"
+          },
+          "shippingAddressSnapshot": {
+            "description": "주문 시점 배송지 스냅샷 (FR-016)",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/OrderAddressSnapshotResponse"
+              }
+            ]
+          },
+          "deliveredAt": {
+            "type": "string",
+            "nullable": true,
+            "format": "date-time"
+          },
+          "completedAt": {
+            "type": "string",
+            "nullable": true,
+            "format": "date-time"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OrderItemResponse"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "userId",
+          "status",
+          "totalAmount",
+          "discountAmount",
+          "shippingAddressSnapshot",
+          "createdAt",
+          "items"
+        ]
+      },
       "RegisterSellerDto": {
         "type": "object",
         "properties": {
@@ -2637,6 +3059,193 @@
         },
         "required": [
           "rejectReason"
+        ]
+      },
+      "ProductSummaryResponse": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "sellerId": {
+            "type": "string",
+            "description": "cross-schema plain String — users.sellers.id (P-001)"
+          },
+          "categoryId": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string",
+            "nullable": true
+          },
+          "price": {
+            "type": "string",
+            "example": "30000.00",
+            "description": "금전 — Decimal 직렬화 문자열 (P-005)"
+          },
+          "status": {
+            "enum": [
+              "DRAFT",
+              "ACTIVE",
+              "OUT_OF_STOCK",
+              "INACTIVE"
+            ],
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "sellerId",
+          "categoryId",
+          "title",
+          "price",
+          "status",
+          "createdAt"
+        ]
+      },
+      "ProductListResponse": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProductSummaryResponse"
+            }
+          },
+          "nextCursor": {
+            "type": "string",
+            "nullable": true,
+            "description": "다음 페이지 cursor (없으면 null)"
+          }
+        },
+        "required": [
+          "items"
+        ]
+      },
+      "ProductImageResponse": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "productId": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          },
+          "displayOrder": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "id",
+          "productId",
+          "url",
+          "displayOrder"
+        ]
+      },
+      "VariantResponse": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "productId": {
+            "type": "string"
+          },
+          "optionName": {
+            "type": "string"
+          },
+          "optionValue": {
+            "type": "string"
+          },
+          "sku": {
+            "type": "string"
+          },
+          "price": {
+            "type": "string",
+            "example": "30000.00",
+            "description": "금전 — Decimal 직렬화 문자열 (P-005)"
+          }
+        },
+        "required": [
+          "id",
+          "productId",
+          "optionName",
+          "optionValue",
+          "sku",
+          "price"
+        ]
+      },
+      "ProductDetailResponse": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "sellerId": {
+            "type": "string",
+            "description": "cross-schema plain String — users.sellers.id (P-001)"
+          },
+          "categoryId": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string",
+            "nullable": true
+          },
+          "price": {
+            "type": "string",
+            "example": "30000.00",
+            "description": "금전 — Decimal 직렬화 문자열 (P-005)"
+          },
+          "status": {
+            "enum": [
+              "DRAFT",
+              "ACTIVE",
+              "OUT_OF_STOCK",
+              "INACTIVE"
+            ],
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "images": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProductImageResponse"
+            }
+          },
+          "variants": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/VariantResponse"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "sellerId",
+          "categoryId",
+          "title",
+          "price",
+          "status",
+          "createdAt",
+          "images",
+          "variants"
         ]
       },
       "CreateProductDto": {
@@ -2743,6 +3352,29 @@
           "url"
         ]
       },
+      "CategoryResponse": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "slug": {
+            "type": "string"
+          },
+          "displayOrder": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "slug",
+          "displayOrder"
+        ]
+      },
       "StockInDto": {
         "type": "object",
         "properties": {
@@ -2753,6 +3385,66 @@
         },
         "required": [
           "quantity"
+        ]
+      },
+      "CartItemResponse": {
+        "type": "object",
+        "properties": {
+          "variantId": {
+            "type": "string"
+          },
+          "productId": {
+            "type": "string"
+          },
+          "sellerId": {
+            "type": "string",
+            "description": "cross-schema plain String — users.sellers.id (P-001)"
+          },
+          "quantity": {
+            "type": "number"
+          },
+          "unitPrice": {
+            "type": "string",
+            "example": "30000.00",
+            "description": "금전 — 단가 스냅샷 (P-005)"
+          },
+          "optionName": {
+            "type": "string"
+          },
+          "optionValue": {
+            "type": "string"
+          },
+          "productTitle": {
+            "type": "string"
+          },
+          "sku": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "variantId",
+          "productId",
+          "sellerId",
+          "quantity",
+          "unitPrice",
+          "optionName",
+          "optionValue",
+          "productTitle",
+          "sku"
+        ]
+      },
+      "CartResponse": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CartItemResponse"
+            }
+          }
+        },
+        "required": [
+          "items"
         ]
       },
       "AddCartItemDto": {
@@ -2822,6 +3514,95 @@
           "expiresAt"
         ]
       },
+      "CouponResponse": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "issuerType": {
+            "enum": [
+              "ADMIN",
+              "SELLER"
+            ],
+            "type": "string"
+          },
+          "issuerId": {
+            "type": "string",
+            "description": "ADMIN: admin userId, SELLER: users.sellers.id (P-001)"
+          },
+          "type": {
+            "enum": [
+              "FIXED",
+              "PERCENTAGE"
+            ],
+            "type": "string"
+          },
+          "discountValue": {
+            "type": "string",
+            "example": "5000.00",
+            "description": "금전/할인율 — Decimal 직렬화 문자열 (P-005)"
+          },
+          "maxDiscountAmount": {
+            "type": "string",
+            "nullable": true,
+            "description": "금전 — PERCENTAGE 최대 할인 상한 (P-005)"
+          },
+          "minOrderAmount": {
+            "type": "string",
+            "nullable": true,
+            "description": "금전 — 최소 주문 금액 (P-005)"
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "totalQuantity": {
+            "type": "number",
+            "nullable": true,
+            "description": "발급 한도 (null=무제한)"
+          },
+          "issuedCount": {
+            "type": "number"
+          },
+          "description": {
+            "type": "string",
+            "nullable": true
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "issuerType",
+          "issuerId",
+          "type",
+          "discountValue",
+          "expiresAt",
+          "issuedCount",
+          "createdAt"
+        ]
+      },
+      "CouponListResponse": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CouponResponse"
+            }
+          },
+          "nextCursor": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "items"
+        ]
+      },
       "IssueCouponDto": {
         "type": "object",
         "properties": {
@@ -2831,6 +3612,44 @@
         },
         "required": [
           "targetUserId"
+        ]
+      },
+      "UserCouponResponse": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "couponId": {
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "unused",
+              "used",
+              "expired"
+            ],
+            "type": "string"
+          },
+          "usedOrderId": {
+            "type": "string",
+            "nullable": true,
+            "description": "사용된 주문 id (FR-016)"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "coupon": {
+            "$ref": "#/components/schemas/CouponResponse"
+          }
+        },
+        "required": [
+          "id",
+          "couponId",
+          "status",
+          "createdAt",
+          "coupon"
         ]
       },
       "CreatePaymentDto": {
@@ -2867,6 +3686,21 @@
           "password"
         ]
       },
+      "RegisterResponse": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "email"
+        ]
+      },
       "LoginDto": {
         "type": "object",
         "properties": {
@@ -2883,6 +3717,23 @@
           "password"
         ]
       },
+      "LoginResponse": {
+        "type": "object",
+        "properties": {
+          "accessToken": {
+            "type": "string",
+            "description": "JWT access token"
+          },
+          "refreshToken": {
+            "type": "string",
+            "description": "JWT refresh token"
+          }
+        },
+        "required": [
+          "accessToken",
+          "refreshToken"
+        ]
+      },
       "RefreshDto": {
         "type": "object",
         "properties": {
@@ -2892,6 +3743,61 @@
         },
         "required": [
           "refreshToken"
+        ]
+      },
+      "RefreshResponse": {
+        "type": "object",
+        "properties": {
+          "accessToken": {
+            "type": "string",
+            "description": "JWT access token (재발급)"
+          }
+        },
+        "required": [
+          "accessToken"
+        ]
+      },
+      "AuthProfileResponse": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "email",
+          "createdAt"
+        ]
+      },
+      "UserProfileResponse": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string",
+            "nullable": true
+          },
+          "phone": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "id",
+          "email"
         ]
       },
       "UpdateProfileDto": {
@@ -2904,6 +3810,50 @@
             "type": "string"
           }
         }
+      },
+      "AddressResponse": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "userId": {
+            "type": "string"
+          },
+          "recipientName": {
+            "type": "string"
+          },
+          "phone": {
+            "type": "string"
+          },
+          "zipCode": {
+            "type": "string"
+          },
+          "address1": {
+            "type": "string"
+          },
+          "address2": {
+            "type": "string",
+            "nullable": true
+          },
+          "isDefault": {
+            "type": "boolean"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "userId",
+          "recipientName",
+          "phone",
+          "zipCode",
+          "address1",
+          "isDefault",
+          "createdAt"
+        ]
       },
       "CreateAddressDto": {
         "type": "object",
@@ -2955,6 +3905,31 @@
           }
         }
       },
+      "WishlistResponse": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "userId": {
+            "type": "string"
+          },
+          "productId": {
+            "type": "string",
+            "description": "cross-schema plain String — products.products.id (P-001)"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "userId",
+          "productId",
+          "createdAt"
+        ]
+      },
       "AddWishlistDto": {
         "type": "object",
         "properties": {
@@ -2964,6 +3939,31 @@
         },
         "required": [
           "productId"
+        ]
+      },
+      "RecentViewResponse": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "userId": {
+            "type": "string"
+          },
+          "productId": {
+            "type": "string",
+            "description": "cross-schema plain String — products.products.id (P-001)"
+          },
+          "viewedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "userId",
+          "productId",
+          "viewedAt"
         ]
       },
       "CreateShipmentDto": {
@@ -2988,6 +3988,55 @@
           "trackingNumber"
         ]
       },
+      "ShipmentResponse": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "orderId": {
+            "type": "string",
+            "description": "cross-module plain String — orders.orders.id (P-001)"
+          },
+          "status": {
+            "enum": [
+              "preparing",
+              "shipped",
+              "in_transit",
+              "delivered"
+            ],
+            "type": "string"
+          },
+          "carrier": {
+            "type": "string"
+          },
+          "trackingNumber": {
+            "type": "string"
+          },
+          "shippedAt": {
+            "type": "string",
+            "nullable": true,
+            "format": "date-time"
+          },
+          "deliveredAt": {
+            "type": "string",
+            "nullable": true,
+            "format": "date-time"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "orderId",
+          "status",
+          "carrier",
+          "trackingNumber",
+          "createdAt"
+        ]
+      },
       "UpdateShipmentStatusDto": {
         "type": "object",
         "properties": {
@@ -3008,6 +4057,40 @@
         },
         "required": [
           "status"
+        ]
+      },
+      "ShipmentTrackingResponse": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "shipmentId": {
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "preparing",
+              "shipped",
+              "in_transit",
+              "delivered"
+            ],
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "occurredAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "shipmentId",
+          "status",
+          "description",
+          "occurredAt"
         ]
       },
       "CreateSettlementDto": {
@@ -3032,6 +4115,63 @@
           "periodEnd"
         ]
       },
+      "SettlementResponse": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "sellerId": {
+            "type": "string",
+            "description": "cross-schema plain String — users.sellers.id (P-001)"
+          },
+          "periodStart": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "periodEnd": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "totalSales": {
+            "type": "string",
+            "example": "1000000.00",
+            "description": "금전 — 정산 기간 총 매출 (P-005)"
+          },
+          "commission": {
+            "type": "string",
+            "example": "100000.00",
+            "description": "금전 — 플랫폼 수수료 (P-005)"
+          },
+          "payoutAmount": {
+            "type": "string",
+            "example": "900000.00",
+            "description": "금전 — 실 지급액 (P-005)"
+          },
+          "status": {
+            "enum": [
+              "pending",
+              "completed"
+            ],
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "sellerId",
+          "periodStart",
+          "periodEnd",
+          "totalSales",
+          "commission",
+          "payoutAmount",
+          "status",
+          "createdAt"
+        ]
+      },
       "CreateReviewDto": {
         "type": "object",
         "properties": {
@@ -3054,6 +4194,60 @@
           "content"
         ]
       },
+      "ReviewResponse": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "orderItemId": {
+            "type": "string",
+            "description": "orders.order_items.id — 1 orderItem 1 리뷰 (P-001)"
+          },
+          "orderId": {
+            "type": "string"
+          },
+          "userId": {
+            "type": "string"
+          },
+          "productId": {
+            "type": "string"
+          },
+          "sellerId": {
+            "type": "string",
+            "description": "users.sellers.id (P-001)"
+          },
+          "rating": {
+            "type": "number",
+            "minimum": 1,
+            "maximum": 5,
+            "description": "평점 1~5"
+          },
+          "content": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "orderItemId",
+          "orderId",
+          "userId",
+          "productId",
+          "sellerId",
+          "rating",
+          "content",
+          "createdAt",
+          "updatedAt"
+        ]
+      },
       "UpdateReviewDto": {
         "type": "object",
         "properties": {
@@ -3066,6 +4260,187 @@
             "type": "string"
           }
         }
+      },
+      "ReviewListResponse": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReviewResponse"
+            }
+          },
+          "nextCursor": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "items"
+        ]
+      },
+      "ProductCardResponse": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "sellerId": {
+            "type": "string",
+            "description": "cross-schema plain String — users.sellers.id (P-001)"
+          },
+          "categoryId": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string",
+            "nullable": true
+          },
+          "price": {
+            "type": "string",
+            "example": "30000.00",
+            "description": "금전 — Decimal 직렬화 문자열 (P-005)"
+          },
+          "status": {
+            "enum": [
+              "DRAFT",
+              "ACTIVE",
+              "OUT_OF_STOCK",
+              "INACTIVE"
+            ],
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "images": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProductImageResponse"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "sellerId",
+          "categoryId",
+          "title",
+          "price",
+          "status",
+          "createdAt",
+          "images"
+        ]
+      },
+      "SearchProductsResponse": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProductCardResponse"
+            }
+          },
+          "total": {
+            "type": "number"
+          },
+          "page": {
+            "type": "number"
+          },
+          "size": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "page",
+          "size"
+        ]
+      },
+      "NotificationResponse": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "userId": {
+            "type": "string",
+            "description": "cross-schema plain String — users.users.id (P-001)"
+          },
+          "type": {
+            "enum": [
+              "ORDER_PLACED",
+              "ORDER_SHIPPED",
+              "SETTLEMENT_CREATED",
+              "REVIEW_RECEIVED"
+            ],
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "body": {
+            "type": "string"
+          },
+          "isRead": {
+            "type": "boolean"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "userId",
+          "type",
+          "title",
+          "body",
+          "isRead",
+          "createdAt"
+        ]
+      },
+      "NotificationListResponse": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/NotificationResponse"
+            }
+          },
+          "total": {
+            "type": "number"
+          },
+          "page": {
+            "type": "number"
+          },
+          "size": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "page",
+          "size"
+        ]
+      },
+      "MarkAllReadResponse": {
+        "type": "object",
+        "properties": {
+          "updated": {
+            "type": "number",
+            "description": "읽음 처리된 건수"
+          }
+        },
+        "required": [
+          "updated"
+        ]
       },
       "PresignDto": {
         "type": "object",
@@ -3145,6 +4520,62 @@
           "imageUrl"
         ]
       },
+      "BannerResponse": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "imageUrl": {
+            "type": "string"
+          },
+          "linkUrl": {
+            "type": "string",
+            "nullable": true
+          },
+          "position": {
+            "enum": [
+              "MAIN_TOP",
+              "MAIN_MIDDLE",
+              "MAIN_BOTTOM",
+              "SIDEBAR"
+            ],
+            "type": "string"
+          },
+          "sortOrder": {
+            "type": "number"
+          },
+          "isActive": {
+            "type": "boolean"
+          },
+          "startsAt": {
+            "type": "string",
+            "nullable": true,
+            "format": "date-time"
+          },
+          "endsAt": {
+            "type": "string",
+            "nullable": true,
+            "format": "date-time"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "imageUrl",
+          "position",
+          "sortOrder",
+          "isActive",
+          "createdAt"
+        ]
+      },
       "UpdateBannerDto": {
         "type": "object",
         "properties": {
@@ -3182,6 +4613,187 @@
             "nullable": true
           }
         }
+      },
+      "PlatformOverviewResponse": {
+        "type": "object",
+        "properties": {
+          "totalOrders": {
+            "type": "number"
+          },
+          "completedOrders": {
+            "type": "number"
+          },
+          "totalSales": {
+            "type": "string",
+            "example": "1000000.00",
+            "description": "금전 — 완료 주문 총 매출 (P-005)"
+          },
+          "totalUsers": {
+            "type": "number"
+          },
+          "totalSellers": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "totalOrders",
+          "completedOrders",
+          "totalSales",
+          "totalUsers",
+          "totalSellers"
+        ]
+      },
+      "SellerStatsResponse": {
+        "type": "object",
+        "properties": {
+          "salesTotal": {
+            "type": "string",
+            "example": "500000.00",
+            "description": "금전 — 판매자 매출 합계 (P-005)"
+          },
+          "orderCount": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "salesTotal",
+          "orderCount"
+        ]
+      },
+      "SellerProfileResponse": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "userId": {
+            "type": "string",
+            "description": "cross-schema plain String — users.users.id (P-001)"
+          },
+          "businessName": {
+            "type": "string"
+          },
+          "businessNumber": {
+            "type": "string"
+          },
+          "representativeName": {
+            "type": "string"
+          },
+          "contactPhone": {
+            "type": "string",
+            "nullable": true
+          },
+          "businessAddress": {
+            "type": "string",
+            "nullable": true
+          },
+          "status": {
+            "enum": [
+              "PENDING",
+              "APPROVED",
+              "REJECTED"
+            ],
+            "type": "string"
+          },
+          "rejectReason": {
+            "type": "string",
+            "nullable": true
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "userId",
+          "businessName",
+          "businessNumber",
+          "representativeName",
+          "status",
+          "createdAt"
+        ]
+      },
+      "AdminUserResponse": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string",
+            "nullable": true
+          },
+          "phone": {
+            "type": "string",
+            "nullable": true
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "email",
+          "createdAt"
+        ]
+      },
+      "AdminUserListResponse": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AdminUserResponse"
+            }
+          },
+          "nextCursor": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "items"
+        ]
+      },
+      "AdminAuditLogResponse": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "adminId": {
+            "type": "string",
+            "description": "조치 수행 관리자 userId (P-001)"
+          },
+          "action": {
+            "type": "string",
+            "description": "조치 종류 (예: SELLER_APPROVE)"
+          },
+          "targetType": {
+            "type": "string",
+            "description": "대상 엔티티 종류 (예: SELLER, BANNER, USER)"
+          },
+          "targetId": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "adminId",
+          "action",
+          "targetType",
+          "targetId",
+          "createdAt"
+        ]
       }
     }
   }

@@ -1,13 +1,14 @@
 /**
  * AuthService 단위 테스트 — [env:unit]
  *
- * 대상 SC: SC-010, SC-013, SC-014, SC-016, SC-017
+ * 대상 SC: SC-001, SC-002(보조), SC-010, SC-013, SC-014, SC-016, SC-017
  * 검증 방법: Jest mock (AuthRepository·JwtService·ConfigService·bcrypt)
  *
- * 주의 (PROC-001 — Pydantic v2 대응 아님, TS 버전):
+ * 주의 (PROC-001 — TS 버전):
  *   - mock 객체의 필드 값은 실제 타입에 맞게 설정한다.
  *   - bcrypt.compare 는 jest.spyOn 으로 module-level mock 처리.
  *   - signAsync 호출 인자(expiresIn)를 정확히 검증한다.
+ *   - getProfile isAdmin 테스트 시 process.env['ADMIN_USER_IDS'] 를 설정·복원한다.
  */
 
 import { Test, TestingModule } from '@nestjs/testing';
@@ -67,9 +68,12 @@ const FIXED_USER = {
 
 describe('AuthService', () => {
   let service: AuthService;
+  let savedAdminUserIds: string | undefined;
 
   beforeEach(async () => {
     jest.clearAllMocks();
+    // process.env 격리: 각 테스트 전 현재 값 저장
+    savedAdminUserIds = process.env['ADMIN_USER_IDS'];
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -83,13 +87,69 @@ describe('AuthService', () => {
     service = module.get<AuthService>(AuthService);
   });
 
+  afterEach(() => {
+    // process.env 복원: 테스트 간 격리 보장
+    if (savedAdminUserIds === undefined) {
+      delete process.env['ADMIN_USER_IDS'];
+    } else {
+      process.env['ADMIN_USER_IDS'] = savedAdminUserIds;
+    }
+  });
+
+  // ─────────────────────────────────────────────
+  // SC-001: getProfile 반환에 isAdmin 포함
+  // ─────────────────────────────────────────────
+  describe('SC-001: getProfile 응답에 isAdmin 포함 (FR-001)', () => {
+    it('when_getProfile_then_isAdmin_in_response', async () => {
+      /**
+       * SC-001 (FR-001 관련):
+       * getProfile(userId) 반환 객체에 isAdmin: boolean 필드가 포함되어야 한다.
+       * ADMIN_USER_IDS 미설정 → isAdmin: false (fail-closed).
+       */
+      delete process.env['ADMIN_USER_IDS'];
+      mockAuthRepository.findUserById.mockResolvedValue(FIXED_USER);
+
+      const result = await service.getProfile(FIXED_USER.id);
+
+      // isAdmin 필드 존재 + boolean 타입 확인
+      expect(result).toHaveProperty('isAdmin');
+      expect(typeof result.isAdmin).toBe('boolean');
+    });
+
+    it('when_getProfile_admin_user_then_isAdmin_true', async () => {
+      /**
+       * SC-001 보조 + SC-002 (FR-001 관련):
+       * ADMIN_USER_IDS에 userId 포함 시 getProfile 응답의 isAdmin = true.
+       */
+      process.env['ADMIN_USER_IDS'] = FIXED_USER.id;
+      mockAuthRepository.findUserById.mockResolvedValue(FIXED_USER);
+
+      const result = await service.getProfile(FIXED_USER.id);
+
+      expect(result.isAdmin).toBe(true);
+    });
+
+    it('when_getProfile_non_admin_user_then_isAdmin_false', async () => {
+      /**
+       * SC-001 보조 + SC-002 (FR-001 관련):
+       * ADMIN_USER_IDS에 userId 미포함 시 getProfile 응답의 isAdmin = false.
+       */
+      process.env['ADMIN_USER_IDS'] = 'other-admin-id';
+      mockAuthRepository.findUserById.mockResolvedValue(FIXED_USER);
+
+      const result = await service.getProfile(FIXED_USER.id);
+
+      expect(result.isAdmin).toBe(false);
+    });
+  });
+
   // ─────────────────────────────────────────────
   // SC-010: 중복 이메일 → ConflictException (409)
   // ─────────────────────────────────────────────
-  describe('SC-010: 중복 이메일 → ConflictException (409)', () => {
+  describe('SC-010: 중복 이메일 → ConflictException (409) (v1.0.0/001 spec)', () => {
     it('when_duplicate_email_then_conflict_409', async () => {
       /**
-       * SC-010 (FR-008 관련):
+       * SC-010 (FR-008 관련) (v1.0.0/001 spec):
        * 이미 가입된 이메일로 register 호출 시 ConflictException (HTTP 409) 발생.
        * AuthService.register: findUserByEmail → 존재 시 ConflictException throw.
        */
@@ -108,10 +168,10 @@ describe('AuthService', () => {
   // ─────────────────────────────────────────────
   // SC-013: 잘못된 비밀번호 → UnauthorizedException (401)
   // ─────────────────────────────────────────────
-  describe('SC-013: 잘못된 비밀번호 → UnauthorizedException (401)', () => {
+  describe('SC-013: 잘못된 비밀번호 → UnauthorizedException (401) (v1.0.0/001 spec)', () => {
     it('when_wrong_password_then_unauthorized_401', async () => {
       /**
-       * SC-013 (FR-009 관련):
+       * SC-013 (FR-009 관련) (v1.0.0/001 spec):
        * 잘못된 비밀번호로 login 호출 시 UnauthorizedException (HTTP 401) 발생.
        * AuthService.login: findUserByEmail → bcrypt.compare(false) → UnauthorizedException.
        */
@@ -141,10 +201,10 @@ describe('AuthService', () => {
   // ─────────────────────────────────────────────
   // SC-014: login → access token exp = iat + 900s
   // ─────────────────────────────────────────────
-  describe('SC-014: login access token exp = iat + 900s (NFR-003)', () => {
+  describe('SC-014: login access token exp = iat + 900s (NFR-003) (v1.0.0/001 spec)', () => {
     it('when_login_then_access_exp_iat_plus_900', async () => {
       /**
-       * SC-014 (FR-009, NFR-003 관련):
+       * SC-014 (FR-009, NFR-003 관련) (v1.0.0/001 spec):
        * login 성공 시 발급하는 Access Token의 expiresIn이 JWT_ACCESS_TTL_SECONDS(900) 과 동일해야 한다.
        * 검증: signAsync 호출 시 options.expiresIn === 900 (또는 '15m' 등 900s 상당값).
        *
@@ -178,10 +238,10 @@ describe('AuthService', () => {
   // ─────────────────────────────────────────────
   // SC-016: 만료·무효 refresh → UnauthorizedException (401)
   // ─────────────────────────────────────────────
-  describe('SC-016: 만료·무효 Refresh Token → UnauthorizedException (401)', () => {
+  describe('SC-016: 만료·무효 Refresh Token → UnauthorizedException (401) (v1.0.0/001 spec)', () => {
     it('when_expired_or_revoked_refresh_then_401 (JWT signature expired)', async () => {
       /**
-       * SC-016 (FR-010 관련):
+       * SC-016 (FR-010 관련) (v1.0.0/001 spec):
        * 만료된 Refresh Token JWT (서명 검증 실패) 로 refresh 호출 시 UnauthorizedException 발생.
        * AuthService.refresh: JwtService.verifyAsync throw → catch → UnauthorizedException.
        */
@@ -240,10 +300,10 @@ describe('AuthService', () => {
   // ─────────────────────────────────────────────
   // SC-017: login → refresh token 만료 = +30d
   // ─────────────────────────────────────────────
-  describe('SC-017: login refresh token 만료 = +30d (NFR-004)', () => {
+  describe('SC-017: login refresh token 만료 = +30d (NFR-004) (v1.0.0/001 spec)', () => {
     it('when_login_then_refresh_expiry_plus_30d', async () => {
       /**
-       * SC-017 (FR-009, NFR-004 관련):
+       * SC-017 (FR-009, NFR-004 관련) (v1.0.0/001 spec):
        * login 성공 시 DB에 저장되는 RefreshToken의 expiresAt이
        * 발급 시점으로부터 30일(JWT_REFRESH_TTL_DAYS) 후여야 한다.
        *

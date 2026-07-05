@@ -11,6 +11,7 @@ import {
   JWT_ACCESS_TTL_SECONDS,
   JWT_REFRESH_TTL_DAYS,
 } from '../../shared/config/jwt.config';
+import { isAdminUserId } from '../../shared/auth/admin-ids';
 import { AuthRepository } from './auth.repository';
 
 // 비밀번호 bcrypt cost factor (ADR-001: cost 10~12)
@@ -28,6 +29,7 @@ export interface UserProfile {
   id: string;
   email: string;
   createdAt: Date;
+  isAdmin: boolean;
 }
 
 export interface RegisterResult {
@@ -174,7 +176,8 @@ export class AuthService {
     if (!user) {
       throw new UnauthorizedException('User not found');
     }
-    return { id: user.id, email: user.email, createdAt: user.createdAt };
+    const isAdmin = isAdminUserId(userId, process.env['ADMIN_USER_IDS']);
+    return { id: user.id, email: user.email, createdAt: user.createdAt, isAdmin };
   }
 
   // ──────────────────────────────────────────────

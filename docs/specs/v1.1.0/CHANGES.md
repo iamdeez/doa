@@ -1,3 +1,359 @@
+## [012-console-phase4-polish] 구현 완료
+
+> v1.1.0 의 열두 번째 차수 — **콘솔 Phase 4 마감**: (1) 백엔드 `GET /auth/me` 응답에 `isAdmin` 필드 추가(FR-001),
+> (2) `<ImageUpload>` 공용 컴포넌트 + 상품 이미지 관리 + 배너 이미지 업로드(FR-002~004),
+> (3) Next.js `middleware.ts` 라우트 가드 + `auth.tsx` isAdmin 실값 연동 + 네비게이션 권한 필터(FR-005~007),
+> (4) `<ErrorState>·<LoadingState>·<EmptyState>` 표준 컴포넌트(FR-008~009),
+> (5) Playwright E2E 설정 + 스모크 시나리오 4종(FR-010~011).
+> base `f0489a1` → working tree(미커밋). 변경 라인은
+> `git diff f0489a1 -- apps/backend/src apps/console packages/shared-types packages/api-client pnpm-lock.yaml`
+> 로 재생성 (14 files changed, +1462/-52). **마이그레이션 없음**(DB 스키마 변경 0).
+> 신규 의존성: `@playwright/test` (devDep, console). 선택 단계 전부 N.
+
+**변경 파일**:
+
+백엔드:
+- `apps/backend/src/shared/auth/admin-ids.ts` (신규, +17): `isAdminUserId()` 순수 헬퍼 — ADMIN_USER_IDS 파싱·포함 판별(ADR-001). fail-closed.
+- `apps/backend/src/shared/auth/admin-ids.spec.ts` (신규): isAdminUserId 단위 테스트 (env 미설정·빈값·포함·미포함 케이스)
+- `apps/backend/src/shared/auth/admin.guard.ts` (+11/-1): isAdminUserId() 위임으로 파싱 로직 추출. 행위 보존.
+- `apps/backend/src/modules/auth/auth.service.ts` (+5/-1): `getProfile()` 반환에 `isAdmin: isAdminUserId(userId, env)` 추가(FR-001)
+- `apps/backend/src/modules/auth/dto/auth-response.dto.ts` (+3): `AuthProfileResponse`에 `isAdmin: boolean` 필드 추가
+- `apps/backend/src/modules/auth/auth.service.spec.ts` (+84/-0): SC-001·SC-002 신규 테스트 + process.env 격리(beforeEach/afterEach). 기존 SC-010·013·014·016·017 (v1.0.0/001 spec) 출처 주석 추가.
+
+콘솔 공용:
+- `apps/console/lib/upload-constants.ts` (신규, +10): `ALLOWED_MIME_TYPES`·`MAX_FILE_SIZE_BYTES` 상수 (NFR-002)
+- `apps/console/components/states.tsx` (신규): `<LoadingState>·<ErrorState>·<EmptyState>` 표준 컴포넌트 (FR-008)
+- `apps/console/components/image-upload.tsx` (신규): `<ImageUpload>` 공용 컴포넌트 — presign→PUT→confirm 3단계 업로드 (FR-002·ADR-002)
+- `apps/console/lib/auth.tsx` (+18/-1): isAdmin 하드코딩 false → `profile?.isAdmin ?? false` 연동. 쿠키 미러링(`token` 쿠키 set/delete) 추가 (FR-005·ADR-003·ADR-004)
+- `apps/console/lib/config.ts` (+10): `API_BASE_URL` 런타임 설정 노출 (ADR-006)
+- `apps/console/middleware.ts` (신규, +40): 보호 경로 쿠키 기반 가드 — 비인증 `/login` 리다이렉트, 비관리자 `/admin/*` 차단 (FR-006·ADR-003·ADR-005)
+
+콘솔 페이지·레이아웃:
+- `apps/console/app/(dashboard)/layout.tsx` (+9/-0): 네비게이션 admin 섹션에 `isAdmin` 조건 추가 (FR-007. GAP-007-01 (2) 해소)
+- `apps/console/app/(dashboard)/admin/banners/page.tsx` (+19/-0): `imageUrl` 입력 → `<ImageUpload>` 교체 (FR-004)
+- `apps/console/app/(dashboard)/seller/products/[id]/page.tsx` (+86/-0): 이미지 관리 섹션 추가 — 목록·업로드·삭제·10장 제한 (FR-003)
+
+패키지:
+- `packages/shared-types/src/index.ts` (+39/-0): `FilePurpose` union, `UserProfile.isAdmin` 추가, `ImageUploadResult` 신규
+- `packages/api-client/src/index.ts` (+13): `files.presign·confirm`, `products.addImage·deleteImage` 메서드 추가
+
+설정·테스트:
+- `apps/console/package.json` (+14/-0): `@playwright/test`·`vitest`·`@vitejs/plugin-react` devDep 추가. `test` 스크립트 추가.
+- `apps/console/tsconfig.json` (+10/-0): `paths` 추가·테스트 파일 exclude
+- `apps/console/vitest.config.ts` (신규): vitest 설정 (react plugin)
+- `apps/console/vitest.setup.ts` (신규): vitest 글로벌 setup
+- `apps/console/tsconfig.test.json` (신규): 테스트 전용 tsconfig
+- `apps/console/tsconfig.e2e.json` (신규): Playwright 전용 tsconfig
+- `apps/console/playwright.config.ts` (신규): Playwright 설정 (SC-020)
+- `apps/console/static-verification.test.ts` (신규): 정적 구조 검증 24개
+- `apps/console/components/image-upload.test.tsx` (신규): ImageUpload 단위 테스트 7개 (SC-004~006)
+- `apps/console/app/(dashboard)/layout.test.tsx` (신규): 레이아웃 isAdmin 분기 3개 (SC-017)
+- `apps/console/app/(dashboard)/admin/banners/page.test.tsx` (신규): 배너 페이지 5개 (SC-011·012·019)
+- `apps/console/app/(dashboard)/seller/products/[id]/page.test.tsx` (신규): 상품 이미지 섹션 5개 (SC-007~010)
+- `apps/console/e2e/auth.spec.ts` (신규): Playwright E2E — 로그인 (SC-021)
+- `apps/console/e2e/seller.spec.ts` (신규): Playwright E2E — 판매자 접근 (SC-022)
+- `apps/console/e2e/admin.spec.ts` (신규): Playwright E2E — 관리자 접근 (SC-023)
+- `apps/console/e2e/guard.spec.ts` (신규): Playwright E2E — 가드 (SC-024·025)
+- `pnpm-lock.yaml` (+1193/-0): Playwright + vitest 전이 의존성
+
+**검증**:
+- `pnpm --filter backend test` → **271 passed / 271 total** (기존 261 + SC-001~002 신규 10개. 회귀 0)
+- `pnpm --filter console test` → **44 passed / 44 total** (static-verification 24·image-upload 7·layout 3·banners 5·products/[id] 5. 회귀 0)
+- 총 **315/315 PASS**
+- SC 18/25 파이프라인 검증 PASS. SC-015·016·021~025 (7건) DEFERRED (env:e2e-docker, 옵션 A — 로컬 실행)
+
+**해결**:
+- **GAP-007-01 (2) 해소**: 비관리자에게 admin 메뉴가 노출되는 UX 결함 — `layout.tsx` isAdmin 조건 추가로 해소.
+- `isAdminUserId` 헬퍼 추출(ADR-001): AdminGuard·AuthService 공유 로직 단일 지점화.
+- 쿠키 미러링(ADR-003): localStorage 토큰 → 쿠키 동기화로 Next.js middleware 서버 사이드 가드 가능.
+
+**후속 작업 시 주의사항**:
+- **쿠키 미러링은 클라이언트 신뢰값 (ADR-003)**: `middleware.ts` 의 `isAdmin` 쿠키는 클라이언트가 설정하므로 위변조 가능. 백엔드 `AdminGuard` 가 최종 방어선. middleware 는 UX 보호 추가 계층. admin 라우트 백엔드 권한 검증 생략 금지.
+- **GAP-001 — 상품·배너 모두 `PRODUCT_IMAGE` purpose**: `FilePurpose` enum 에 `BANNER` 없음. 두 용도 모두 `'PRODUCT_IMAGE'` 전송. presign key prefix 만의 의미 차선택. 실 운영 후 enum 확장 필요 시 별도 spec.
+- **`ADMIN_USER_IDS` 미설정 시 전 admin 차단**: 환경변수 미설정 → `isAdminUserId` fail-closed → 모든 사용자 isAdmin=false → middleware `/admin/*` 전면 차단. 배포 시 `ADMIN_USER_IDS` 필수 설정 (infra.md 체크리스트 갱신 권고 — §7).
+- **`CORS_ORIGIN` (011 연계)**: 011 에서 추가된 `.env.example` `CORS_ORIGIN` — 콘솔 개발 서버 origin 미포함 시 API 호출 CORS 오류. 로컬 개발 시 `CORS_ORIGIN=http://localhost:3001` 또는 미설정(fail-open) 확인.
+- **E2E 7건 로컬 실행**: SC-015·016·021~025 는 파이프라인 외 로컬 실행 필요. `coverage-gap.md §E2E 로컬 실행 절차` 참조 (백엔드·콘솔 dev 서버 기동 후 `pnpm --filter console test:e2e` 실행).
+- **`StubFileStorage` → 실 R2 전환 시**: presigned URL 형식 차이로 클라이언트 PUT 실패 가능. 전환 후 이미지 업로드 end-to-end 수동 검증 필수.
+- **배너 imageUrl 입력 완전 대체**: `CreateBannerDialog` 의 텍스트 입력 → `<ImageUpload>` 교체. URL 직접 입력 불가. 이미지 파일 업로드 전용.
+- **context.md 갱신 필요 (GAP-002)**: `shared/auth` 항목에 `admin-ids.ts isAdminUserId 헬퍼` + `GET /auth/me isAdmin 노출` 반영 필요 — gaps.md GAP-002 참조.
+
+## [011-backend-cors-dev-logging] 구현 완료
+
+> v1.1.0 의 열한 번째 차수 — **백엔드 부트스트랩 보강**: (1) CORS 활성화로 콘솔·모바일 등 교차 출처
+> 클라이언트의 API 호출 허용, (2) `app.module.ts` 가 비프로덕션에서 참조하던 `pino-pretty` transport
+> 의존성 누락(잠재 부팅 결함) 해소, (3) GAP-011-01 해소(`CORS_ORIGIN` 환경변수 문서화). base `1fe3489`
+> → working tree(작성 시점 미커밋). 변경 라인은
+> `git diff 1fe3489 -- apps/backend/src/main.ts apps/backend/.env.example apps/backend/package.json pnpm-lock.yaml`
+> 로 재생성 (소스 4 files, +93 / 인프라 메타 `infra.md` +2 별도). **마이그레이션 없음**(DB 스키마 변경 0).
+> 신규 의존성: `pino-pretty ^13.1.3`(devDep). 선택 단계 전부 N. **역문서화(retroactive)**.
+
+**변경 파일**:
+- `apps/backend/src/main.ts` (+7): 부트스트랩에 `app.enableCors({ origin: CORS_ORIGIN?.split(',') ?? true, credentials: true })` 추가
+- `apps/backend/.env.example` (+3): `CORS_ORIGIN` 항목 + fail-open 주의 주석 추가 (GAP-011-01 해소)
+- `apps/backend/package.json` (+1): `devDependencies` 에 `pino-pretty ^13.1.3` 추가
+- `pnpm-lock.yaml` (+82): `pino-pretty@13.1.3` + 전이 의존성 트리 lock
+- `.claude/docs/infra.md` (+2): §7 배포 체크리스트에 `CORS_ORIGIN` 항목, §8 알려진 제약에 CORS fail-open 행 추가 (GAP-011-01 해소, 인프라 참조 문서 — 별도 추적)
+
+**검증**:
+- `pnpm --filter backend test` → **261 passed / 261 total** (회귀 0, 미커밋 변경 포함 상태로 실행).
+- `main.ts` `enableCors` + `?? true` fallback 확인 (SC-001, SC-002).
+- `package.json` devDeps `pino-pretty` + `pnpm-lock` `pino-pretty@13.1.3` 확인 (SC-003, SC-004).
+- `.env.example` 에 `CORS_ORIGIN` 추가 확인 (GAP-011-01 해소).
+
+**해소된 GAP**:
+- **GAP-011-01 (해소)**: CORS 환경변수 문서화 공백 해소 — `.env.example` 에 `CORS_ORIGIN` 추가 및
+  `infra.md` §7(배포 체크리스트)·§8(알려진 제약: CORS fail-open) 보강. 운영 배포 시 `CORS_ORIGIN`
+  화이트리스트 설정이 체크리스트로 강제된다.
+
+**후속 작업 시 주의사항**:
+- **CORS 전체 허용 기본값 — 운영 화이트리스트 필수**: `CORS_ORIGIN` 미설정 시 모든 origin 허용 +
+  `credentials: true` 조합은 운영에서 보안 위험이다. 코드 기본값은 fail-open 이므로, 운영 배포 시 반드시
+  `CORS_ORIGIN` 환경변수로 허용 origin 을 명시해야 한다(infra.md §7 체크리스트로 강제, §8 제약 등재).
+- **pino-pretty 는 dev 전용**: 비프로덕션 transport 로만 동작하므로 `devDependencies` 가 적절. 프로덕션
+  (`NODE_ENV=production`)에서는 `transport: undefined` 로 raw JSON stdout 로깅 — 동작 변경 없음. 프로덕션
+  이미지 빌드 시 dev 의존성 제외 가능.
+- **010 FR-005 와의 관계**: 010 이 `openapi:gen` 에 `NODE_ENV=production` 을 강제해 pino-pretty 누락을
+  *회피*한 것과 동일 뿌리 문제를, 본 차수가 의존성 추가로 *근본 해소*했다. 이제 `openapi:gen` 외 다른
+  비프로덕션 부팅 경로에서도 transport 로드가 안전하다.
+
+## [010-backend-response-schemas] 구현 완료
+
+> v1.1.0 의 열 번째 차수 — **백엔드 OpenAPI 2xx 응답 스키마 보강**(GAP-001-01 후속): 14개 도메인에
+> 문서 전용 응답 DTO(`*-response.dto.ts`)를 신규 도입하고 각 컨트롤러 라우트에 `@ApiOkResponse({ type })`
+> 부착. **런타임 무변경**(NFR-001) — 컨트롤러는 여전히 Prisma 엔티티를 반환하며 DTO 는 스키마 생성 전용.
+> base `a3fc463` → `1fe3489`(커밋 6개, 중간에 009 docs 커밋 `db7cdb5` 끼어 있음). 변경 라인은
+> `git diff a3fc463 1fe3489 -- apps/backend/src apps/backend/openapi.json apps/backend/package.json packages/shared-types/src/openapi.gen.ts`
+> 로 재생성. **마이그레이션 없음**(DB 스키마 변경 0). **신규 의존성 0**. 선택 단계 전부 N.
+> **역문서화(retroactive)** — 이미 커밋된 코드 기준으로 SDD 문서 세트를 역공학 작성.
+
+**변경 파일** (응답 DTO 14종 신규 + 컨트롤러 15종 어노테이션 + 생성물 2종):
+- `apps/backend/src/modules/admin/dto/admin-response.dto.ts` (+51) · `admin.controller.ts` (+7)
+- `apps/backend/src/modules/auth/dto/auth-response.dto.ts` (+34) · `auth.controller.ts` (+11)
+- `apps/backend/src/modules/banner/dto/banner-response.dto.ts` (+35) · `banner.controller.ts` (+6)
+- `apps/backend/src/modules/cart/dto/cart-response.dto.ts` (+40) · `cart.controller.ts` (+5)
+- `apps/backend/src/modules/coupon/dto/coupon-response.dto.ts` (+75) · `coupon.controller.ts` (+13)
+- `apps/backend/src/modules/notification/dto/notification-response.dto.ts` (+47) · `notification.controller.ts` (+9)
+- `apps/backend/src/modules/order/dto/order-response.dto.ts` (+101) · `order.controller.ts` (+4)
+- `apps/backend/src/modules/product/dto/product-response.dto.ts` (+125) · `product.controller.ts` (+9)
+- `apps/backend/src/modules/review/dto/review-response.dto.ts` (+46) · `review.controller.ts` (+6)
+- `apps/backend/src/modules/seller/dto/seller-response.dto.ts` (+35)
+- `apps/backend/src/modules/settlement/dto/settlement-response.dto.ts` (+35) · `settlement.controller.ts` (+4)
+- `apps/backend/src/modules/shipping/dto/shipping-response.dto.ts` (+49) · `shipping.controller.ts` (+6)
+- `apps/backend/src/modules/stats/dto/stats-response.dto.ts` (+29) · `stats.controller.ts` (+4)
+- `apps/backend/src/modules/user/dto/user-response.dto.ts` (+79) · `user.controller.ts` (+15)
+- `apps/backend/src/modules/search/search.controller.ts` (+3): 상품 검색 라우트 어노테이션
+- `apps/backend/package.json` (+1/-1): `openapi:gen` 스크립트에 `NODE_ENV=production` 추가 (pino-pretty silent exit 버그 픽스, FR-005)
+- `apps/backend/openapi.json` (+1773/-161): 생성물 — components.schemas 32→73, typed 2xx 38→62
+- `packages/shared-types/src/openapi.gen.ts` (+562/-61): 생성물 — openapi-typescript 코드젠 재실행
+
+**검증**:
+- `pnpm --filter backend test` → **261 passed / 261 total**, 25 suites 전량 PASS (SC-008, 회귀 0).
+- `openapi.json` `components.schemas` 32→**73** (SC-005, 직접 카운트 검증).
+- typed 2xx 응답 오퍼레이션 38→**62** / 전체 89 (SC-006, 직접 카운트 검증).
+- 14개 도메인 `*-response.dto.ts` 신규 생성 확인 (SC-001).
+- `openapi:gen` 스크립트 `NODE_ENV=production` 포함 확인 (SC-004).
+
+**후속 작업 시 주의사항**:
+- **DTO 는 문서 전용 — 런타임 변환 없음**: 컨트롤러는 Prisma 엔티티를 그대로 반환하므로 DTO 필드와 실제
+  반환 페이로드가 drift 할 수 있다. class-transformer 직렬화 변환은 범위 외(별도 스펙). DTO 필드를 추가·변경할 때
+  실제 엔티티 반환 형태와 수동 대조가 필요하다.
+- **금전 필드 string 표기(P-005) 일관성**: Prisma `Decimal` 은 JSON 직렬화 시 문자열이 되므로 DTO 에서
+  `@ApiProperty({ type: String })` 로 선언했다. 신규 금전 필드 추가 시 동일 원칙을 유지해야 프론트 타입이 맞다.
+- **cross-schema plain String(P-001)**: userId·sellerId 등 외래 모듈 ID 는 모듈 의존 회피를 위해 plain String
+  으로만 노출한다. 찜·최근 본 상품(`/user/wishlist`·`/user/recent-views`)도 `productId: string` 만 반환하며 상품
+  summary join 을 하지 않는다(SC-009). 응답에 상품 상세가 필요하면 별도 BFF/조합 계층에서 처리한다.
+- **계약 재생성 절차(2단계) 유지**: 백엔드 DTO 변경 시 `pnpm --filter backend openapi:gen` →
+  `pnpm --filter @doa/shared-types gen` 양 단계를 재실행해야 `openapi.json`·`openapi.gen.ts` drift 가 없다.
+  CI 자동 재생성·diff 게이트는 아직 없음(GAP-001-01 잔존).
+- **SettlementWithItems items 미모델링(GAP-010-01)**: `createSettlement` 응답의 `items` 배열은 DTO 로 완전
+  표현하지 않았다(범위 외 이월). 정산 상세 응답을 프론트에서 강타입으로 다루려면 후속 스펙에서 보강 필요.
+- **204 응답 미보강**: 로그아웃·삭제 등 204 No Content 는 스키마 대상이 아니다(범위 외). 본문이 있는 응답만 보강했다.
+
+## [009-flutter-customer-app] 구현 완료
+
+> v1.1.0 의 아홉 번째 차수 — **Flutter 고객 앱 MVP 신규 구현**: `mobile/customer_app` 모듈 전체 신규 생성.
+> base `a94ff47` → `a3fc463`. 변경 라인은 `git diff a94ff47 a3fc463 -- mobile/customer_app` 로 재생성
+> (28 files, 전체 신규). **마이그레이션 없음**(DB 스키마 변경 0). 신규 의존성: Flutter ^3.9.2 + Riverpod + Dio 등 (백엔드·콘솔 독립).
+> 선택 단계 전부 N.
+
+**변경 파일**:
+- `mobile/customer_app/lib/app.dart`: DoaApp — AuthStatus switch 라우팅
+- `mobile/customer_app/lib/main.dart`: 진입점, ko_KR 초기화
+- `mobile/customer_app/lib/core/api_client.dart`: Dio + InterceptorsWrapper (Bearer·401 refresh)
+- `mobile/customer_app/lib/core/providers.dart`: Riverpod providers, AuthController
+- `mobile/customer_app/lib/core/token_store.dart`: FlutterSecureStorage 래퍼
+- `mobile/customer_app/lib/theme/app_theme.dart`: DoaColors, DoaRadius, AppTheme.light()
+- `mobile/customer_app/lib/features/shell/app_shell.dart`: 4탭 IndexedStack
+- `mobile/customer_app/lib/features/shell/category_screen.dart`: 카테고리 화면 (하드코딩)
+- `mobile/customer_app/lib/features/auth/login_screen.dart`: 로그인 화면
+- `mobile/customer_app/lib/features/home/home_screen.dart`: 홈 상품 그리드
+- `mobile/customer_app/lib/features/product/product_detail_screen.dart`: 상품 상세, 찜, 리뷰
+- `mobile/customer_app/lib/features/product/variant_sheet.dart`: 옵션 선택 시트
+- `mobile/customer_app/lib/features/cart/cart_screen.dart`: 장바구니
+- `mobile/customer_app/lib/features/checkout/checkout_screen.dart`: 결제 화면 (uuid idempotencyKey)
+- `mobile/customer_app/lib/features/order/order_history_screen.dart`: 주문 내역
+- `mobile/customer_app/lib/features/order/order_detail_screen.dart`: 주문 상세
+- `mobile/customer_app/lib/features/order/delivery_tracking_screen.dart`: 배송 추적 스테퍼
+- `mobile/customer_app/lib/features/order/order_status.dart`: 주문 상태 레이블·색상
+- `mobile/customer_app/lib/features/review/review_write_screen.dart`: 리뷰 작성
+- `mobile/customer_app/lib/features/wishlist/wishlist_screen.dart`: 찜 목록
+- `mobile/customer_app/lib/features/history/history_screen.dart`: 최근 본 상품
+- `mobile/customer_app/lib/features/coupon/coupon_box_screen.dart`: 쿠폰함
+- `mobile/customer_app/lib/features/address/address_book_screen.dart`: 배송 주소록
+- `mobile/customer_app/lib/features/address/address_edit_screen.dart`: 배송지 추가·수정
+- `mobile/customer_app/lib/features/mypage/mypage_screen.dart`: 마이페이지
+- `mobile/customer_app/lib/features/search/search_screen.dart`: 검색 화면
+- `mobile/customer_app/pubspec.yaml`: Flutter 의존성 선언
+- `mobile/customer_app/test/app_theme_test.dart`: AppTheme 위젯 테스트
+
+**후속 작업 시 주의사항**:
+- 전체 응답 파싱이 `Map<String,dynamic>` 동적 파싱이므로, 필드명·타입 변경 시 런타임 오류 발생. Freezed 모델 도입 전까지 백엔드 응답 스키마 변경에 주의 (GAP-009-01).
+- 찜 목록·최근 본 상품은 N+1 조회 패턴. 아이템 수 증가 시 서버 요청 급증 가능 (GAP-009-02).
+- `pubspec.yaml`에 `go_router`가 선언되어 있으나 실제 라우팅은 `Navigator.push`/`MaterialPageRoute` 사용. 향후 라우팅 통합 시 go_router 적용 또는 제거 결정 필요.
+- `mobile/customer_app`은 백엔드·콘솔과 독립 빌드 단위. `pnpm` 워크스페이스 외부에 위치하며 `flutter pub get`으로 별도 의존성 관리.
+
+## [008-console-admin-polish] 구현 완료
+
+> v1.1.0 의 여덟 번째 차수 — **007(관리자 콘솔) 이후 폴리시 작업**: 관리자 쿠폰 화면(007 범위 외 예고)·
+> CouponManager 공유 컴포넌트 추출·다크모드 토글(002 GAP-002-01 부분 해소)·인앱 알림 화면(009 소비 UI).
+> base `e7d8ebb` → `99d34a9`. 커밋 3개: `5a14be6`(관리자 쿠폰 + CouponManager)·`4a446b2`(다크모드 + 알림)·
+> `99d34a9`(알림 경로 정정). 변경 라인은 `git diff e7d8ebb 99d34a9 -- apps/console packages` 로 재생성
+> (9 files, +464/-229). **마이그레이션 없음**(DB 스키마 변경 0). **신규 의존성 0**(`package.json` 변경 없음).
+> 선택 단계 전부 N.
+
+**변경 파일**:
+- `apps/console/components/coupon-manager.tsx`(신규): CouponManager 공유 컴포넌트. `CouponApi { list, create,
+  issue }` 인터페이스 의존성 주입·`queryScope`로 TanStack Query 캐시 키 분리(판매자/관리자 독립)·`discountLabel`·
+  `validate`(010 정합 클라이언트 검증)·`CreateDialog`(할인 유형 Select·할인값·최소주문·발급수량·만료일·mutation·
+  onSuccess invalidate·close·reset)·`IssueDialog`(userId Input·mutation·onSuccess invalidate).
+- `apps/console/app/(dashboard)/account/notifications/page.tsx`(신규): 인앱 알림 화면. `useQuery(['notifications'],
+  api.notification.list)`(`GET /notifications` → `NotificationListResult`) + `NotificationRow`(Badge info/
+  neutral·`TYPE_LABEL[n.type]`·`opacity-70` 읽음 표시·"읽음" Button → `markRead` mutation onSuccess invalidate)
+  + 헤더 "전체 읽음"(unread>0 시) → `markAllRead` mutation. 경로: `account/notifications`(99d34a9 경로 정정).
+- `apps/console/app/(dashboard)/seller/coupons/page.tsx`(수정): CouponManager 위임 리팩토링(235줄→~26줄).
+  `isSeller` 분기(EmptyState "판매자 미등록")·`queryScope="seller"` 유지. 기존 UX·동작 회귀 0.
+- `apps/console/app/(dashboard)/layout.tsx`(수정): 헤더 우측 액션에 `<ThemeToggle />` 추가. NAV 배열:
+  common 섹션에 "알림"(`/account/notifications`)·admin 섹션에 "쿠폰(관리자)"(`/admin/coupons`) 추가.
+- `apps/console/components/theme-toggle.tsx`(신규): 다크모드 토글 버튼. `documentElement.classList.toggle
+  ('dark', next)` + `localStorage.setItem('theme', ...)` 영속(try-catch 감싸 불가 환경 허용) + `useEffect`
+  마운트 시 `.dark` 상태 초기화 + `aria-label`.
+- `packages/shared-types/src/index.ts`: notification view 타입 3종(`NotificationType` 4 union·`Notification`·
+  `NotificationListResult`). 백엔드 `GET /notifications` 응답 OpenAPI 미정의이므로 전이형 한시 정의.
+- `packages/api-client/src/index.ts`: `notification` 도메인 facade(list·markRead·markAllRead) + `admin.
+  listCoupons`·`admin.createCoupon`·`admin.issueCoupon` 3 메서드 추가. 기존 facade·client·http 불변.
+- `apps/console/app/(dashboard)/admin/coupons/page.tsx`(신규): 관리자 쿠폰 화면. `CouponManager`에 `api.admin.
+  {listCoupons, createCoupon, issueCoupon}` 주입·`queryScope="admin"`·`title="쿠폰(관리자)"`.
+- `apps/console/app/layout.tsx`(수정): `THEME_SCRIPT`(`localStorage.getItem('theme')` + `prefers-color-scheme:
+  dark` → `classList.add('dark')`) 인라인 스크립트를 `<head>`에 삽입. `<html lang="ko" suppressHydrationWarning>`.
+
+**검증**: `pnpm --filter console typecheck` 0 error / `pnpm --filter console build` 모든 라우트 PASS(신규
+`/admin/coupons`·`/account/notifications` 포함) / 기존 화면(상품·계정·주문·배송·판매자 통계/정산/기존쿠폰)
+동작 회귀 0. 신규 단위/e2e 테스트 0(UI 화면 — 타입체크·빌드·정적 갈음). 변경 라인 직접 카운트
+(coupon-manager +247·notifications +83·seller/coupons +13/-222·dashboard/layout +12/-6·theme-toggle +34·
+shared-types +28·api-client +20·admin/coupons +20·app/layout +7/-1 = 9 files +464/-229).
+
+**해결**: 007 §범위 외 예고 `admin/coupons` 화면 구현. GAP-002-01(다크모드 토글 UI 부재) 부분 해소(FOUC
+방지 포함). 009 인앱 알림 이벤트 소비 UI 제공. 006 판매자 쿠폰 화면 CouponManager 공유화로 코드 중복 해소.
+
+**후속 작업 시 주의사항**:
+- **notification·admin 쿠폰 응답 view 타입 한시**: `GET /notifications`·`GET/POST /admin/coupons` 응답이 OpenAPI
+  미정의이므로 전이형 view 타입(`shared-types`)으로 한시 정의. 백엔드 `@ApiResponse({ type })` 보강 후 코드젠
+  생성 타입으로 대체 가능(004·006·007 GAP 연속 — GAP-008-01).
+- **알림 경로 정정 이력**: `4a446b2`에서 cwd 버그로 `account/notification`(단수) 위치에 잘못 생성, `99d34a9`에서
+  `account/notifications`(복수)로 정정 완료. 향후 알림 관련 링크·라우트는 `notifications`(복수) 사용.
+- **CouponManager queryScope 분리**: 판매자 쿠폰·관리자 쿠폰은 `queryScope`("seller"/"admin")로 캐시 키가 분리된다.
+  향후 `CouponManager`에 추가 소비처를 붙일 때 고유한 `queryScope` 문자열을 사용할 것.
+- **다크모드 시스템 모드 실시간 감지 미지원**: `THEME_SCRIPT`는 초기 로드 시만 `prefers-color-scheme`을 확인한다.
+  런타임 시스템 모드 변경 감지는 후속 스펙에서 `matchMedia` 이벤트 리스너로 추가 필요.
+
+---
+
+## [007-admin-console] 구현 완료
+
+> v1.1.0 의 일곱 번째 차수 — **FRONTEND-PLAN Phase 3(관리자 운영 콘솔 — 플랫폼 통계·전체 정산·사용자·감사
+> 로그·판매자 승인·배너 관리)**. base `1a6d70d` → `e7d8ebb`. 커밋 1개: `e7d8ebb`(Phase 3 관리자 콘솔).
+> 변경 라인은 `git diff 1a6d70d e7d8ebb -- apps/console packages` 로 재생성(9 files, +586/-13).
+> **마이그레이션 없음**(DB 스키마 변경 0 — 프론트 console 화면 + 공유 패키지). **신규 의존성 0**(`package.json`
+> 변경 없음). 선택 단계 전부 N. 004·005·006(판매자 화면) 위에 관리자 운영 화면을 올린다.
+
+**변경 파일**:
+- `apps/console/app/(dashboard)/admin/stats/page.tsx`(신규): 플랫폼 통계. `useQuery(['admin','stats'],
+  api.admin.statsOverview)`(`GET /admin/stats/overview` → `PlatformOverview`)로 조회 후 `StatCard` 5개(총
+  매출(완료) `formatKRW(totalSales)`·총 주문·완료 주문·총 사용자·총 판매자 — 각 `toLocaleString('ko-KR')`).
+  로딩·에러 분기.
+- `apps/console/app/(dashboard)/admin/settlements/page.tsx`(신규): 전체 정산. `api.admin.settlements()`
+  (`GET /admin/settlements` → `SettlementView[]` — 006 타입 재사용)로 조회 후 `@doa/ui` Table 렌더(판매자
+  `sellerId` 앞 12자·총 매출·수수료 `−formatKRW`·지급액·상태 Badge). status `completed`→"지급완료"(success)·
+  그 외→"정산대기"(warning). 빈 목록 분기.
+- `apps/console/app/(dashboard)/admin/users/page.tsx`(신규): 사용자. `useInfiniteQuery` + `api.admin.
+  users(cursor)`(`GET /admin/users` → `CursorPage<AdminUser>`)·`getNextPageParam`=`last.nextCursor`·`pages.
+  flatMap(items)` Table(이메일·이름·연락처·가입일). `hasNextPage` 시 "더 보기" Button(`isFetchingNextPage`
+  비활성화).
+- `apps/console/app/(dashboard)/admin/audit-logs/page.tsx`(신규): 감사 로그. `api.admin.auditLogs()`
+  (`GET /admin/audit-logs` → `AdminAuditLog[]`, 013 append-only)로 조회 후 Table(일시·관리자 `adminId` 앞
+  12자·조치 `Badge` info·대상 `targetType`·`targetId` 앞 12자). 빈 목록 분기.
+- `apps/console/app/(dashboard)/admin/sellers/page.tsx`(수정 — 플레이스홀더→실데이터): 판매자 승인. `api.admin.
+  pendingSellers()`(`GET /admin/sellers/pending` → `AdminSeller[]`)로 조회 후 Table(상호·대표자·사업자번호·
+  연락처·조치). 행 승인 Button → `api.admin.approveSeller(s.id)`(`POST /admin/sellers/:id/approve`, `useMutation`)
+  `onSuccess` invalidate `['admin','pendingSellers']`. 처리 중 `approve.variables === s.id` 행만 비활성화·
+  "처리 중…".
+- `apps/console/app/(dashboard)/admin/banners/page.tsx`(신규): 배너 관리(CRUD). `api.admin.banners()`
+  (`GET /admin/banners` → `Banner[]`) Table(제목·위치·순서·활성 Badge·조치). `CreateBannerDialog`(Radix Dialog —
+  `Input`·`Select`(`BannerPosition` 4종)·`createBanner`(`POST /admin/banners`) `onSuccess` invalidate+닫기+
+  reset). 활성 토글(`updateBanner`(`PATCH /admin/banners/:id`) `{ isActive: !b.isActive }`)·삭제(`deleteBanner`
+  (`DELETE /admin/banners/:id`) danger 버튼). 세 mutation 모두 `onSuccess` invalidate. 삭제는 즉시(확인
+  다이얼로그 없음 — 후속). 기존 `lib/order.ts` `formatKRW` 재사용.
+- `packages/shared-types/src/index.ts`: admin view 타입 9종(`PlatformOverview`·`AdminUser`·`AdminAuditLog`·
+  `SellerApprovalStatus`·`AdminSeller`·`BannerPosition`·`Banner`·`CreateBannerRequest`·`UpdateBannerRequest`).
+  백엔드 응답이 OpenAPI 에 미정의(Prisma 엔티티 반환 — 001 coverage-gap)이므로 전이형 view 타입으로 한시 정의.
+  금전 필드(`PlatformOverview.totalSales`)는 Decimal→JSON 직렬화상 **문자열**. 정산은 006 `SettlementView`
+  재사용(신규 정산 타입 0).
+- `packages/api-client/src/index.ts`: `createApiClient` 반환에 `admin` 도메인 facade 10 메서드(`statsOverview`·
+  `settlements`·`users`·`auditLogs`·`pendingSellers`·`approveSeller`·`banners`·`createBanner`·`updateBanner`·
+  `deleteBanner`) 추가. `api.http` 기반(`http.get/post/patch/delete`), view 타입을 응답 제네릭으로 사용.
+  `admin.users` 는 `{ query: { cursor, limit } }`, `admin.auditLogs` 는 `{ query: { limit } }`. 기존 facade
+  (auth·user·seller·catalog·inventory·order·shipping·stats·settlement·coupon)·`client`·`http` 불변.
+- `apps/console/app/(dashboard)/layout.tsx`: AppShell `NAV` 관리자 섹션에 "배너"(`/admin/banners`)·"전체 정산"
+  (`/admin/settlements`)·"플랫폼 통계"(`/admin/stats`)·"사용자"(`/admin/users`)·"감사 로그"(`/admin/audit-logs`)
+  5개 추가(기존 "판매자 승인" 위에 누적). `visible` 필터는 seller 섹션만 `isSeller` 로 가림(admin 항상 노출 —
+  AdminGuard 백엔드 강제).
+
+**검증**: `pnpm --filter console typecheck` 0 error / `pnpm --filter console build` 22 라우트 PASS(신규
+`/admin/stats`·`/admin/settlements`·`/admin/users`·`/admin/audit-logs`·`/admin/banners` 포함) / 기존 화면(상품·
+계정·주문·배송·판매자 통계/정산/쿠폰) 동작 회귀 0. 신규 단위/e2e 테스트 0(UI 화면 — `git diff 1a6d70d e7d8ebb
+-- apps/console packages` 에 `*.spec.ts`·`*.e2e.ts` 변경 0, 검증은 타입체크 + 빌드 + 정적 구조 리뷰로 갈음).
+변경 라인 직접 카운트(banners +172·shared-types +77·sellers +72/-13·users +71·settlements +64·audit-logs +61·
+stats +32·api-client +32·layout +5 = 9 files +586/-13). 마이그레이션 없음(DB 스키마 변경 0). 신규 의존 0
+(`package.json` 변경 없음). `@doa/ui`(StatCard·Select·Table·Dialog)·`lib/order.ts`(formatKRW)·006
+`SettlementView` 기존 자산 재사용(변경 0).
+
+**해결**: **FRONTEND-PLAN Phase 3(관리자 운영 콘솔) RESOLVED**. 004·005·006 이 완성한 Phase 1~2(판매자 화면)
+위에 관리자 플랫폼 통계·전체 정산·사용자(cursor 무한 스크롤)·감사 로그·판매자 승인·배너 관리 운영 화면 6종을
+제공. 006 과 동일하게 응답 스키마가 OpenAPI 미정의인 도메인이라 타입드 client 대신 전이형 view 타입 +
+`api.admin.*` facade 채택(정산은 006 `SettlementView` 재사용). 판매자 승인 화면의 플레이스홀더를 실데이터+승인
+mutation 으로 교체. 권한은 백엔드 `AdminGuard` 가 전 admin 라우트에 강제(UI 네비는 권한 필터 없이 노출 —
+클라이언트 권한 차단은 후속).
+
+**후속 작업 시 주의사항**:
+- **응답 view 타입 한시성(006·004·001 연속)**: 관리자 통계·정산·사용자·감사·판매자·배너 응답은 백엔드가
+  Prisma 엔티티를 반환하고 OpenAPI 응답 content 가 미주석이다. 003 타입드 client 대신 `@doa/shared-types`
+  전이형 view 타입(금전 string) 9종을 한시 정의했다. 백엔드 응답 DTO + `@ApiResponse({ type })` 보강 후
+  코드젠 재생성하면 생성 타입으로 대체 가능(GAP-007-01 (5)). 금전 필드는 Decimal→문자열이므로 대체 후에도
+  `string` 유지 확인(P-005).
+- **권한은 백엔드 AdminGuard 강제(UI 표시 분기 없음)**: admin 네비는 권한 필터 없이 모든 인증 사용자에게
+  노출된다(`visible` 필터는 seller 섹션만 `isSeller` 로 가림). 데이터 보호는 백엔드 `AdminGuard`(403)가
+  강제하나, 비관리자에게 admin 메뉴가 보이는 UX 결함이 있다. 후속에서 `isAdmin` UI 필터 추가 권고(GAP-007-01
+  (2)).
+- **배너 삭제 즉시 수행**: 배너 삭제는 `danger` 버튼 클릭 시 확인 다이얼로그 없이 즉시 호출된다. 후속에서
+  `AlertDialog` 재확인 추가 권고(GAP-007-01 (1)). 배너 편집(활성 토글 외 필드 수정) UI 도 미지원(GAP-007-01 (3)).
+- **`SettlementView` 재사용**: admin 전체 정산은 006 의 `SettlementView` 를 재사용한다(id·sellerId·periodStart/
+  End·totalSales·commission·payoutAmount·status·createdAt). admin 화면은 `sellerId` 컬럼을 표시한다(판매자 본인
+  화면은 정산 기간 표시). 향후 admin/판매자 정산 응답 형태가 분기하면 타입 분리 필요.
+- **admin/coupons 는 별도(008)**: 관리자 전역 쿠폰 화면(`/admin/coupons`)은 본 007 범위 외(facade·네비 미포함).
+  008 차수에서 추가된다.
+
+---
+
 ## [006-seller-coupon-settlement-stats] 구현 완료
 
 > v1.1.0 의 여섯 번째 차수 — **FRONTEND-PLAN Phase 2(판매자 부가 운영 화면 — 통계·정산·쿠폰) + console 전

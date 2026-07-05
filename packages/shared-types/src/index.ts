@@ -58,7 +58,7 @@ export interface AuthTokens {
 
 /**
  * 사용자 프로필. 엔드포인트별로 채워지는 필드가 다르다.
- * - GET /auth/me  → { id, email, createdAt }
+ * - GET /auth/me  → { id, email, createdAt, isAdmin }
  * - GET /users/me → { id, email, name, phone }
  */
 export interface UserProfile {
@@ -67,6 +67,43 @@ export interface UserProfile {
   name?: string | null;
   phone?: string | null;
   createdAt?: string;
+  /** GET /auth/me 에서만 채워짐. GET /users/me 는 미포함(optional). */
+  isAdmin?: boolean;
+}
+
+/**
+ * 파일 업로드 목적. Prisma FilePurpose enum 동기.
+ * console 은 @prisma/client import 불가이므로 수기 union 정의(GAP-001).
+ */
+export type FilePurpose = 'PRODUCT_IMAGE' | 'REVIEW_IMAGE' | 'PROFILE';
+
+/** POST /files/presign 요청 본문. */
+export interface PresignRequest {
+  purpose: FilePurpose;
+  contentType: string;
+}
+
+/** POST /files/presign 응답. uploadUrl=스토리지 직접 PUT URL, url=public URL. */
+export interface PresignResult {
+  id: string;
+  key: string;
+  uploadUrl: string;
+  url: string;
+}
+
+/** POST /files/:id/confirm 요청 본문. */
+export interface ConfirmFileRequest {
+  size: number;
+}
+
+/** 파일 에셋 1건 (confirm 완료 또는 조회 응답). */
+export interface FileAsset {
+  id: string;
+  key: string;
+  url: string;
+  contentType: string;
+  size: number;
+  status: 'PENDING' | 'UPLOADED';
 }
 
 /** PATCH /users/me — UpdateProfileDto. */

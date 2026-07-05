@@ -10,11 +10,13 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
+import { ApiOkResponse } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../shared/auth/jwt-auth.guard';
 import { CurrentUser } from '../../shared/auth/current-user.decorator';
 import { AuthenticatedUser } from '../../shared/auth/jwt.strategy';
 import { CreateShipmentDto } from './dto/create-shipment.dto';
 import { UpdateShipmentStatusDto } from './dto/update-shipment-status.dto';
+import { ShipmentResponse, ShipmentTrackingResponse } from './dto/shipping-response.dto';
 import { ShippingService } from './shipping.service';
 
 @Controller('shipments')
@@ -25,6 +27,7 @@ export class ShippingController {
   /** POST /shipments — 송장 등록 (APPROVED 판매자) */
   @Post()
   @HttpCode(HttpStatus.CREATED)
+  @ApiOkResponse({ type: ShipmentResponse })
   async createShipment(
     @CurrentUser() user: AuthenticatedUser,
     @Body() dto: CreateShipmentDto,
@@ -38,6 +41,7 @@ export class ShippingController {
 
   /** GET /shipments?orderId= — 주문 기준 송장 조회 (구매자/판매자). 미존재 시 null. */
   @Get()
+  @ApiOkResponse({ type: ShipmentResponse, description: '송장 미존재 시 null' })
   async getByOrder(
     @CurrentUser() user: AuthenticatedUser,
     @Query('orderId') orderId: string,
@@ -47,6 +51,7 @@ export class ShippingController {
 
   /** PATCH /shipments/:id/status — 배송 상태 업데이트 (판매자) */
   @Patch(':id/status')
+  @ApiOkResponse({ type: ShipmentResponse })
   async updateStatus(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id') id: string,
@@ -62,6 +67,7 @@ export class ShippingController {
 
   /** GET /shipments/:id/tracking — 배송 추적 조회 (구매자 본인 또는 판매자) */
   @Get(':id/tracking')
+  @ApiOkResponse({ type: [ShipmentTrackingResponse] })
   async getTracking(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id') id: string,
