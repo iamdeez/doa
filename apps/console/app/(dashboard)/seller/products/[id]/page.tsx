@@ -289,7 +289,7 @@ function VariantRow({ variant, approved }: { variant: ProductVariant; approved: 
       </div>
       <div className="flex items-center gap-3">
         <span className="text-sm text-muted-foreground">
-          재고 {approved ? (stock.isLoading ? '…' : (stock.data ?? 0)) : '—'}
+          재고 {approved ? (stock.isLoading ? '…' : (stock.data?.stock ?? 0)) : '—'}
         </span>
         {approved && (
           <form onSubmit={submit} className="flex items-center gap-1">

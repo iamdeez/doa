@@ -24,6 +24,7 @@ export default function SellerProductsPage() {
     queryFn: () => api.seller.myProducts(),
     enabled: isSeller,
   });
+  const products = data?.items;
 
   if (!isSeller) {
     return (
@@ -54,11 +55,11 @@ export default function SellerProductsPage() {
         </ErrorText>
       )}
 
-      {data && data.length === 0 && (
+      {products && products.length === 0 && (
         <EmptyState title="등록된 상품 없음" message="아직 등록한 상품이 없습니다." />
       )}
 
-      {data && data.length > 0 && (
+      {products && products.length > 0 && (
         <div className="overflow-hidden rounded-card border border-border bg-surface">
           <table className="w-full text-sm">
             <thead className="border-b border-border bg-muted text-left text-xs uppercase tracking-wide text-subtle-foreground">
@@ -70,7 +71,7 @@ export default function SellerProductsPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {data.map((p) => (
+              {products.map((p) => (
                 <tr key={p.id} className="hover:bg-muted">
                   <td className="px-4 py-3 font-medium text-foreground">
                     <Link href={`/seller/products/${p.id}`} className="hover:underline">

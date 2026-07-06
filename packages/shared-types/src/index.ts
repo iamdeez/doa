@@ -274,14 +274,18 @@ export interface AddImageRequest {
 
 // ---------------------------------------------------------------------------
 // inventory (POST /inventory/:variantId/stock-in, GET /inventory/:variantId/stock)
-// 두 엔드포인트 모두 APPROVED 판매자 필수.
-// - GET  /inventory/:variantId/stock   → 숫자(현재 재고)만 반환
-// - POST /inventory/:variantId/stock-in → 본문 없음(void, 200)
+// 두 엔드포인트 모두 APPROVED 판매자 필수. 응답 구조화(017) — 둘 다 InventoryStockView 반환.
 // ---------------------------------------------------------------------------
 
 /** POST /inventory/:variantId/stock-in — StockInDto. quantity 최소 1. */
 export interface StockInRequest {
   quantity: number;
+}
+
+/** GET /inventory/:variantId/stock, POST /inventory/:variantId/stock-in 공통 응답(017). */
+export interface InventoryStockView {
+  variantId: string;
+  stock: number;
 }
 
 // ---------------------------------------------------------------------------
