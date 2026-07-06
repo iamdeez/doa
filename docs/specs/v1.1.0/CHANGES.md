@@ -1,3 +1,47 @@
+## [021-payment-file-integration] 구현 완료
+
+> v1.1.0 의 스물한 번째 차수 — 001~020 차수에 걸쳐 실구현된 18개 도메인 모듈 중 마지막까지
+> **stub** 구현으로 남아 있던 두 외부 연동 지점(`PaymentGatewayPort`·`FileStoragePort`)을
+> 실 서비스(KG이니시스·Cloudflare R2)로 전환한다. Track A(결제)·Track B(파일) 두 트랙으로
+> 구성되며, 두 Port 모두 `env` 기반 `useFactory` DI 팩토리(ADR-005, `PAYMENT_PROVIDER`·
+> `FILE_STORAGE`)로 `stub↔real` 을 코드 변경 없이 전환한다(FR-005/SC-008). 미설정·미인식
+> 값은 안전하게 stub 로 폴백 — 기존 e2e/unit 회귀 0.
+
+**변경 파일**:
+- `apps/backend/src/modules/payment/inicis-payment-gateway.ts` (신규): KG이니시스 `PaymentGatewayPort` 구현체 — `charge`/`refund` native `fetch` + `crypto` 서명(ADR-003), 멱등성 키 페이로드 포함(FR-003), PG 실패 시 `failed` 기록(신규 재시도 메커니즘 없음, GAP-021-01/ADR-008), 요청/응답 로그 자격증명·카드정보 마스킹(NFR-004/ADR-007).
+- `apps/backend/src/modules/payment/inicis.config.ts` (신규): `INICIS_MID`·`INICIS_SIGN_KEY`·`INICIS_API_BASE_URL`·`INICIS_API_KEY`·`INICIS_API_IV` 등 이니시스 자격증명 `ConfigModule.forFeature`.
+- `apps/backend/src/modules/payment/inicis-payment-gateway.spec.ts` (신규): SC-005(부분환불)·SC-016(로그 마스킹) 등 게이트웨이 레벨 단위 테스트.
+- `apps/backend/src/modules/payment/payment-gateway.port.ts` (수정): `charge`에 `authToken?`(GAP-021-02, 표준결제창 인증토큰), `refund`에 `pgTransactionId?`(ADR-002, 취소 대상 거래ID) optional 필드 확장 — 하위호환 유지.
+- `apps/backend/src/modules/payment/dto/create-payment.dto.ts` (수정): `authToken?: string`(`@IsOptional()/@IsString()`) 추가(GAP-021-02 완전해소).
+- `apps/backend/src/modules/payment/payment.controller.ts` (수정): `dto.authToken` 을 `PaymentService.pay` 4번째 인자로 전달하는 배선 추가.
+- `apps/backend/src/modules/payment/payment.service.ts` (수정): `pay(userId, orderId, idempotencyKey, authToken?)` 시그니처 확장 + `gateway.charge({...,authToken})` 전달, `refund` 시 `pgTransactionId` 전달(ADR-002).
+- `apps/backend/src/modules/payment/stub-payment-gateway.ts` (수정): 확장된 optional 필드 반영(동작 불변).
+- `apps/backend/src/modules/payment/payment.module.ts` (수정): `PAYMENT_GATEWAY` provider 를 `useClass`(고정) → `useFactory`(env `PAYMENT_PROVIDER` 기반, `inicis`\|기본값 stub)로 전환(ADR-005).
+- `apps/backend/src/modules/payment/payment.service.spec.ts` (수정): SC-007(021) — PG 실패 시 `failed` 기록 + 동일 멱등키 재요청 시 중복 charge 방지 단위 테스트 추가.
+- `apps/backend/src/modules/order/order.service.spec.ts` (수정): SC-009(021) — 환불 자동승인(관리자 개입 없이 단일 호출 완결) 단위 테스트 추가.
+- `apps/backend/src/modules/file/r2-file-storage.ts` (신규): Cloudflare R2 `FileStoragePort` 구현체 — `@aws-sdk/client-s3` + `@aws-sdk/s3-request-presigner` 로 presigned PUT URL 발급(FR-007, 만료 600초 ADR-006), `r2.dev` 서브도메인 기반 public URL 반환(FR-008).
+- `apps/backend/src/modules/file/r2.config.ts` (신규): `R2_ACCOUNT_ID`·`R2_ACCESS_KEY_ID`·`R2_SECRET_ACCESS_KEY`·`R2_BUCKET`·`R2_PUBLIC_BASE_URL` `ConfigModule.forFeature`.
+- `apps/backend/src/modules/file/file.module.ts` (수정): `FILE_STORAGE` provider 를 `useClass`(고정) → `useFactory`(env `FILE_STORAGE` 기반, `r2`\|기본값 stub)로 전환(ADR-005).
+- `apps/backend/package.json` (수정): `@aws-sdk/client-s3`·`@aws-sdk/s3-request-presigner` 신규 의존성 추가.
+- `apps/backend/.env.example` (수정): `PAYMENT_PROVIDER`·`FILE_STORAGE`·`INICIS_*`(5종)·`R2_*`(5종) 신규 항목 추가.
+- `apps/backend/test/static/inicis-decimal.spec.ts` (신규): SC-015 — 결제·환불 신규 코드에 Prisma `Decimal` 만 사용(float/number 리터럴 금지) 정적 검증.
+- `apps/backend/test/static/inicis-idempotency.spec.ts` (신규): SC-006 — charge·refund 페이로드에 멱등성 키 포함 정적 검증.
+- `apps/backend/test/static/payment-outbox-invariant.spec.ts` (신규): SC-014 — 결제/환불 완료(성공) 상태 변경이 outbox 기록 없이 처리되는 경로가 없음을 정적 검증(PG 실패 `failed` 기록은 outbox 대상 제외).
+- `apps/backend/test/static/provider-env-switch.spec.ts` (신규): SC-008 — env 전환만으로 sandbox↔운영/stub↔real 자격증명이 교체됨을 코드 변경 없이 확인.
+- `apps/backend/test/static/package-no-aws.spec.ts` (수정): allowlist 정밀화 — `@aws-sdk/client-s3`·`@aws-sdk/s3-request-presigner`(P-002 명시 허용, S3 호환 R2 클라이언트)를 AWS 금지 규칙의 예외로 반영, 기존 SC-051(v1.0.0/003) 유지.
+
+**후속 작업 시 주의사항**:
+1. **이니시스 API 구체값 [TO-VERIFY]**: 정확한 엔드포인트·서명 알고리즘·공용 테스트 상점ID(sandbox MID)는 이니시스 개발자센터 공식 문서로 실제 확인이 필요하다(파이프라인 내 WebFetch 미제공으로 미확인). 사용자가 sandbox 크레덴셜을 준비하면 `test/test-cases.md` 옵션A 절차(SC-001~004·010·011·013)를 실행한다.
+2. **실 MID 미발급**: 사용자 사업자 계약이 진행 중이며, 실 운영(prod MID) 전환은 본 spec 범위 외 후속 과제다(ASM-003).
+3. **R2 계정 준비 필요**: Cloudflare 계정·버킷·API 토큰(`R2_*`)은 사용자가 Development 착수 전 별도 준비했다(`test/test-cases.md` "사전 준비(공통)" 절차 참조).
+4. **GAP-021-02 완전 해소**: 표준결제창 인증토큰(`authToken`) 배선이 `CreatePaymentDto`→`PaymentController`→`PaymentService`→`gateway.charge()` 전 구간 완결됐다(5b 코드 Read 확인). 잔존: `authUrl`(결제창 동적 승인 URL)은 DTO 에 여전히 미노출 — 이 흐름이 필요하다고 확정되면 별도 검토(`test/coverage-gap.md` 카테고리 (4), 비차단).
+5. **부분환불 user-facing 엔드포인트는 범위 외**(ADR-004) — 게이트웨이 구현체 레벨(`IniisisPaymentGateway.refund`)만 부분금액을 지원하며, 컨트롤러·서비스 레벨 부분환불 엔드포인트 신설은 필요 시 별도 spec 으로 진행한다.
+6. **020 파일 바이너리 이관 후속 spec 필요 여부 확인**: 020-data-migration-cutover 는 "R2 실연동 완료 후"를 전제로 레거시 파일 바이너리 이관을 범위 외로 이월했다(020 CHANGES.md 참조). 본 spec(021) 완료로 이 전제가 충족되었으므로, 레거시 파일 바이너리 이관을 별도 후속 spec 으로 진행할지 여부를 **main session 이 사용자에게 확인 필요**(020 스펙 완료 시점 판단 대기 사항).
+7. **context.md/infra.md 실연동 반영 갱신 필요**: `GAP-021-03`(gaps.md, OPEN) — context.md §2 file 모듈·§3.4 외부연동, infra.md §3.4·§5·§6·§7 이 여전히 "실 R2/PG 연동은 후속" 표현으로 남아있어 021 완료 사실과 불일치한다. Retrospective Agent 처리 위임.
+8. **DIFF-021 base 혼재 주의(PROC-016-01)**: 선행 020-data-migration-cutover 가 본 spec 시작 시점에 미커밋 상태였다. 아래 DIFF 문서의 "base 혼재 주의" caveat 참조.
+
+---
+
 ## [020-data-migration-cutover] 구현 완료
 
 > v1.1.0 의 스무 번째 차수 — 001~019 로 18개 도메인 모듈 기능 개발이 완료되었으나 부재했던
