@@ -86,14 +86,14 @@ Events (발행/구독 — NestJS EventEmitter)
 | `settlement` | `settlements` | 판매자 정산 |
 | `search` | (자체 테이블 없음) | 상품 검색 질의 — `ProductService` DI 경유 read-only (offset 페이지네이션·키워드·가격·정렬) |
 | `notification` | `users` | 인앱 알림 (notifications 테이블). `create()` 공개 진입점 — 이벤트 연동은 후속(GAP-006-01) |
-| `file` | `files` | 파일 메타데이터·presign (files.files). R2는 `FileStoragePort` + `StubFileStorage`(무네트워크) |
+| `file` | `files` | 파일 메타데이터·presign (files.files). R2는 `FileStoragePort` + `R2FileStorage`(실 연동)·env(`FILE_STORAGE`)로 `StubFileStorage`와 병행(021) |
 | `banner` | `admin` | 배너 노출 (banners 테이블) — 관리자 CRUD + 공개 노출(활성·기간 필터) |
 | `stats` | (자체 테이블 없음) | 집계·통계 — order/user/seller Service 공개 메서드 DI 조합 (매출 Decimal) |
 | `admin` | `admin` (audit) | 운영 — 판매자 승인 대기/승인(SellerService.approve 재사용)·사용자 목록 + 조치 감사 로그(admin_audit_logs, append-only) · 판매자 목록 조회 확장(상태 필터 PENDING/APPROVED/REJECTED·businessName 검색·cursor 페이지네이션, 응답 `{items,nextCursor}` envelope — 017) |
 
 > **구현 상태**: **18개 모듈 전부 실구현**(001~007). search·stats·admin 은 자체 트랜잭션 테이블 없이 타 도메인 Service 공개 메서드를 DI 경유로 조합하는 read-only/오케스트레이션 모듈이다(P-001 — repository 빈 클래스 또는 자기 스키마 집계만).
 >
-> **인프라(`src/infrastructure/pgboss/`)**: PgBossModule · OutboxRelay(payment_outbox → pg-boss relay) · AutoConfirmJob(배송완료 7일 후 자동 구매확정). `shared/prisma/PrismaService` 는 ALS(AsyncLocalStorage) tx-aware 확장(`runInTransaction`/`tx`/`onAfterCommit`) — cross-schema 단일 `$transaction` 참여. 결제: `PaymentGatewayPort` + stub(실 PG 후속), Idempotency-Key 멱등. 파일: `FileStoragePort` + `StubFileStorage`(실 R2 후속).
+> **인프라(`src/infrastructure/pgboss/`)**: PgBossModule · OutboxRelay(payment_outbox → pg-boss relay) · AutoConfirmJob(배송완료 7일 후 자동 구매확정). `shared/prisma/PrismaService` 는 ALS(AsyncLocalStorage) tx-aware 확장(`runInTransaction`/`tx`/`onAfterCommit`) — cross-schema 단일 `$transaction` 참여. 결제: `PaymentGatewayPort` + `IniisisPaymentGateway`(KG이니시스 실연동, 021)·env(`PAYMENT_PROVIDER`)로 stub 병행, Idempotency-Key 멱등. 파일: `FileStoragePort` + `R2FileStorage`(Cloudflare R2 실연동, 021)·env(`FILE_STORAGE`)로 stub 병행.
 
 ### 공통(shared)·인프라 모듈 (실구현)
 
@@ -165,8 +165,8 @@ completed → refund_pending → refunded
 
 | 시스템 | 연동 방식 | 담당 모듈 | 주의사항 |
 |---|---|---|---|
-| Cloudflare R2 | `FileStoragePort` 인터페이스 + `StubFileStorage`(현재 무네트워크 stub, 결정적 URL) | `file` | 실 R2 연동은 후속 — Port 구현체 교체 방식. AWS SDK 미사용(P-002) |
-| PG사(결제) | REST API (PG사별 SDK) | `payment` | 멱등성 키 필수 |
+| Cloudflare R2 | `FileStoragePort` 인터페이스 — `R2FileStorage`(실연동, `@aws-sdk/client-s3` S3 호환 클라이언트) / `StubFileStorage`(무네트워크) 를 env(`FILE_STORAGE`) 팩토리로 병행(ADR-005, 021) | `file` | presigned PUT URL 발급(만료 600초). S3 SDK 는 R2 S3 호환 API 용도로 P-002 명시 허용(AWS 서비스 자체 미사용) |
+| PG사(결제) | KG이니시스 표준(호스팅) 결제창 — `PaymentGatewayPort` 인터페이스, `IniisisPaymentGateway`(sandbox, native fetch + crypto 서명, 021) / `StubPaymentGateway` 를 env(`PAYMENT_PROVIDER`) 팩토리로 병행(ADR-005) | `payment` | 멱등성 키 필수. charge/refund fetch 는 `AbortController` 타임아웃(10초) 적용(GAP-021-04). 실 MID 미발급 — sandbox 전용(ASM-003) |
 | 이메일(알림) | SMTP 또는 외부 SaaS | `notification` | [TBD] — 골격 구축 후 결정 |
 | 푸시(알림) | FCM | `notification` | Flutter 앱 대상 |
 
@@ -273,5 +273,6 @@ postgres (단일 인스턴스, Fly Postgres)
 | 2026-07-03 | v1.1.0/016-naver-state-redirect-hardening — 네이버 code-exchange CSRF state 서버측 하드닝. `POST /auth/naver/state`(익명 발급)·`OAuthStateService`·`users.oauth_states` 신규(33테이블·16차)·verify 이전 state 검증·redirect_uri 조건부(NAVER_REDIRECT_URI). SEC-015-02 RESOLVED·SEC-015-03 코드 RESOLVED/잔존. §2 auth·§4·§6·§7 갱신 | 016-naver-state-redirect-hardening |
 | 2026-07-05 | v1.1.0/019-security-quality-followups — 목록 조회 Query DTO 검증(SEC-017-01 RESOLVED)·find-email enumeration 감사로그(SEC-018-02 RESOLVED)·pino JWT/쿠키 redact(SEC-018-03 RESOLVED)·복합 인덱스(Product/Seller). 사이클 중 003/018 사전결함 2건 통합 수정(GAP-019-03 PrismaService.tx delegate 복원·GAP-019-04 GET 목록 rate-limit 예외). GAP-019-05(auth POST rate-limit vs 순차-다회 e2e 산술충돌, Low) known-limitation 등재. 테스트 카운트 갱신(unit 404·static 60·e2e 125/127). §1·§6·§7 갱신 | 019-security-quality-followups |
 | 2026-07-06 | v1.1.0/020-data-migration-cutover — AWS 레거시 18서비스 RDS PostgreSQL → 신규 8스키마 데이터 이관·빅뱅 컷오버 설계(`scripts/migration/` 도구·MAPPING-SPEC·RUNBOOK·검증 SQL 3종·전용 러너 이미지). `files` 테이블 물리명 정정(file_assets→files.files, GAP-020-02). §6 신규 4행(이관 전제조건 GAP-020-03·스테이징 정리 미자동화 SEC-020-01·감사로그 행위자 미기록 SEC-020-02·성능 후속개선 GAP-020-08/09). 실 이관 실행은 사용자 환경(옵션A) 대기. §2·§4·§6·§7 갱신 | 020-data-migration-cutover |
+| 2026-07-06 | v1.1.0/021-payment-file-integration — 마지막 stub 연동 2건(`PaymentGatewayPort`·`FileStoragePort`) 실전환. `IniisisPaymentGateway`(KG이니시스 sandbox, native fetch+crypto 서명, AbortController 타임아웃)·`R2FileStorage`(Cloudflare R2, `@aws-sdk/client-s3` presigned URL) 신규, env(`PAYMENT_PROVIDER`/`FILE_STORAGE`) 팩토리로 stub 병행(ADR-005). `charge()`/`refund()`에 `authToken?`/`pgTransactionId?` 확장(하위호환). §2 file·payment·§3.4 외부연동(R2·PG사 실연동 반영, GAP-021-03 해소) 갱신 | 021-payment-file-integration |
 | 2026-06-29 | 005·006·007 반영 — 18개 도메인 전부 실구현(배송·정산·검색·알림·파일·배너·통계·운영), 29테이블. notifications 위치 정정(admin→users), file R2 Port+stub 정정, §6 신규 제약(SEC-FIND-005-01·006-01/02, GAP-005-03·006-01/02·007-01, OBS-007-01) 추가 | 005-shipping-settlement, 006-search-notification-file, 007-banner-stats-admin |
 | (이전) | 001~004 골격·카탈로그·거래·리뷰쿠폰 | 001~004 |
