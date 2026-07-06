@@ -1,3 +1,66 @@
+## [020-data-migration-cutover] 구현 완료
+
+> v1.1.0 의 스무 번째 차수 — 001~019 로 18개 도메인 모듈 기능 개발이 완료되었으나 부재했던
+> **레거시 AWS RDS(18개 서비스별 인스턴스) → 신규 Fly Postgres(8스키마 33테이블) 데이터 이관·
+> 컷오버 절차**를 설계·도구화한다. 신규 앱 도메인 코드 변경은 0건(out-of-band) — 산출물은
+> 이관 도구(`scripts/migration/`)·런북·매핑 명세·정적 검증 테스트다.
+>
+> **핵심 설계(ADR-001~010, plan.md)**: 스테이징 기반 ETL(동일 Fly Postgres 인스턴스 내
+> `migration_staging` 임시 스키마, ADR-001) + Fly one-off machine 러너(ADR-002) + DB
+> read-only 하드 차단(ADR-003) + 델타 3분기(append-only 워터마크/updatedAt 워터마크/timestamp
+> 부재 full re-copy, ADR-004) + 위상순서 UPSERT 로드(users→products→commerce→orders→
+> payments→settlements→admin→files, ADR-005) + count·Decimal sum·sample checksum·anti-join
+> 4종 검증 하네스(ADR-006) + PoNR 이전 트래픽 재지정 롤백(역이관 없음, ADR-007) + 금전
+> 레코드 런타임 결제 경로 우회 직접 삽입(ADR-008) + TLS sslmode=require(ADR-009) + 구조적
+> 로그+`verification_runs` 감사 테이블(ADR-010). 컷오버는 60분 윈도우(NFR-001) 내 빅뱅
+> 일괄 전환이며, 검증·GO/NO-GO 판단은 50분 이내 완료해야 한다(NFR-005).
+>
+> **산출물**: `scripts/migration/MAPPING-SPEC.md`(33테이블 필드 단위 매핑표 + ephemeral 4종
+> 스킵 정책 + 비-1:1 변환 규칙 4건)·`sql/00_staging_ddl.sql`(스테이징+`verification_runs`
+> DDL)·`sql/10_transform.sql`(위상순서 UPSERT)·`sql/20_verify.sql`(검증 4종)·
+> `lib/common.sh`·`extract.sh`·`load.sh`·`run.sh`(precopy/outbox-check/cutover/rollback
+> 서브커맨드)·`config.example.env`·`RUNBOOK.md`(10개 필수 체크포인트)·
+> `PRE-ASSESSMENT.md`(NFR-005 게이트)·`queries/extract/*.sql.template`(30개, extract.sh
+> 스캐폴드 자동생성) + 정적 테스트 3스위트(`migration-mapping.spec.ts`·
+> `migration-config.spec.ts`·`migration-runbook.spec.ts`, 54건 전PASS).
+>
+> **검증 방식(옵션 A)**: 실 레거시 AWS RDS 접근이 필요한 SC(SC-001·002·004·005·006·007·009
+> 일부·016·020·021·022, 12건)는 파이프라인 내 자동 실행 불가 — 산출물이 실행 절차를 제시하고
+> 사용자가 실 환경에서 실행 후 결과를 전달하는 계약으로 채택(spec.md "사후 검증 활동 실행
+> 방식"). 5b 가 12개 계약 전건을 실 산출물(run.sh·DDL) 대조로 완결성 검증(거짓 green 없음).
+> SC-001~022 전 22건 매핑 완료 — 자동-PASS 14건(SC-003/009 는 정적+옵션A 혼합 중복집계 포함)
+> + 옵션A-계약검증 12건. 미커버 SC 는 spec.md 설계상 옵션A 방식이며 결함 아님.
+>
+> base `1dd5132`(019 완료 커밋) → working tree(미커밋). 변경 추적: 신규(untracked)
+> `scripts/migration/` 전체(42 파일, +2,938줄) + `apps/backend/test/static/migration-*.spec.ts`
+> 3개(+440줄) + `.gitignore` 수정(+4/-0, `scripts/migration/config.env`·`migration-run/`
+> 커밋 방지). **신규 npm 의존성 0건**(표준 `pg_dump`/`psql`/`\copy` CLI + 기존 `pg` 재사용).
+> **apps/backend 도메인 코드(src·prisma) 변경 0건** — `git diff 1dd5132 -- apps/backend/src
+> apps/backend/prisma` 기준 무변경. 선택 단계: Database Design Agent Y(매핑 명세·변환/검증
+> SQL 산출, GAP-020-01 해소)·Deploy/Security/Performance Agent Y(본 Docs 단계 다음 순서대로
+> 실행 예정).
+>
+> **후속 작업 시 주의사항**:
+> 1. **레거시 실 DDL [TO-VERIFY]**: `MAPPING-SPEC.md`·`extract.sh`·`queries/extract/*.sql.template`
+>    의 레거시측 컬럼명·테이블명·PK 타입은 전부 `[TO-VERIFY]` 마커 상태다(레거시 AWS 접근이
+>    파이프라인 밖에 있어 지어내지 않음, spec.md 옵션 A 원칙). 실제 이관 실행 전 사용자/오너가
+>    레거시 실 스키마를 대조하여 채워야 동작한다.
+> 2. **`products.variants` SKU 가정 (MAPPING-SPEC §8-3, [TO-VERIFY])**: 레거시도 이미 SKU
+>    (옵션 조합) 단위 1행 구조라고 가정하고 1:1 매핑했다. 레거시가 `product_options`+
+>    `variant_option_values` 분리 구조라면 `10_transform.sql`에 조인 추가가 필요하다(현재
+>    SQL 에는 미포함) — 확인 후 T001(매핑 명세) 재작업 대상.
+> 3. **미완 선행 조건**: 실 PG 연동(`PaymentGatewayPort` 는 여전히 stub)·실 R2 연동
+>    (`FILE_STORAGE` 는 여전히 `StubFileStorage`)은 본 spec 과 독립된 별도 후속 spec 이다.
+>    실 파일 바이너리 이관은 R2 연동 완료 후 별도 진행(FR-017/SC-019 는 메타데이터만 포함).
+>    레거시 `payment_outbox` pending=0 드레인(ADR-008)이 컷오버 실행의 전제 조건이다.
+> 4. **Fly Postgres HA 미결정 (`infra.md §8`)**: 컷오버 시점 가용성 요구 수준에 따른 HA 도입
+>    여부는 본 spec 이 강제하지 않으며 별도 결정 필요(로드맵 6단계 이전 결정으로 기 플래그됨).
+> 5. **GAP-020-02(context.md §4 정정, OPEN)**: `FileAsset` 물리 테이블명은 `files.files`
+>    (`file_assets` 아님, `schema.prisma` L782-783 `@@map`/`@@schema`). `context.md §2/§4`가
+>    `file_assets`로 오표기 중 — 본 spec 산출물(`MAPPING-SPEC.md`·`sql/*.sql`)은 실측 물리
+>    테이블명(`files.files`)을 사용해 이 문제를 회피했다. `gaps.md` GAP-020-02/GAP-020-03
+>    참조(Retrospective 처리 대기).
+
 ## [019-security-quality-followups] 구현 완료
 
 > v1.1.0 의 열아홉 번째 차수 — 017-seller-admin-read-apis·018-auth-security-hardening 의

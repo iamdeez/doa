@@ -86,7 +86,7 @@ Events (발행/구독 — NestJS EventEmitter)
 | `settlement` | `settlements` | 판매자 정산 |
 | `search` | (자체 테이블 없음) | 상품 검색 질의 — `ProductService` DI 경유 read-only (offset 페이지네이션·키워드·가격·정렬) |
 | `notification` | `users` | 인앱 알림 (notifications 테이블). `create()` 공개 진입점 — 이벤트 연동은 후속(GAP-006-01) |
-| `file` | `files` | 파일 메타데이터·presign (file_assets). R2는 `FileStoragePort` + `StubFileStorage`(무네트워크) |
+| `file` | `files` | 파일 메타데이터·presign (files.files). R2는 `FileStoragePort` + `StubFileStorage`(무네트워크) |
 | `banner` | `admin` | 배너 노출 (banners 테이블) — 관리자 CRUD + 공개 노출(활성·기간 필터) |
 | `stats` | (자체 테이블 없음) | 집계·통계 — order/user/seller Service 공개 메서드 DI 조합 (매출 Decimal) |
 | `admin` | `admin` (audit) | 운영 — 판매자 승인 대기/승인(SellerService.approve 재사용)·사용자 목록 + 조치 감사 로그(admin_audit_logs, append-only) · 판매자 목록 조회 확장(상태 필터 PENDING/APPROVED/REJECTED·businessName 검색·cursor 페이지네이션, 응답 `{items,nextCursor}` envelope — 017) |
@@ -187,11 +187,11 @@ postgres (단일 인스턴스, Fly Postgres)
 ├── schema: payments   (payments, refunds, payment_outbox)
 ├── schema: settlements(settlements, settlement_items)
 ├── schema: admin      (banners, admin_audit_logs)
-└── schema: files      (file_assets)
+└── schema: files      (files.files)
 ```
 
-> **실재 상태**: **33개 테이블 실체화**(Prisma migrate 적용, 마이그레이션 16차) — `users` 10(+ notifications·password_reset_otps·social_accounts·oauth_states) · `products` 6 · `commerce` 4(carts·coupons·user_coupons·reviews) · `orders` 5(+ shipments·shipment_tracking) · `payments` 3(payments·refunds·payment_outbox) · `settlements` 2(settlements·settlement_items) · `admin` 2(banners·admin_audit_logs) · `files` 1(file_assets).
-> Variant 가 옵션을 인라인 필드로 흡수(별도 options 테이블 없음). `order_events`·`inventory_logs`·`shipment_tracking` 은 append-only. 금전 필드(totalAmount·unitPrice·amount·totalSales·commission·payoutAmount·saleAmount 등)는 전부 Decimal(12,2)(P-005). cross-schema/cross-module 참조는 plain String(FK 미선언, P-001) — notifications.userId·file_assets.ownerId·banners 무참조·settlements.sellerId·settlement_items.orderItemId·shipments.orderId 등.
+> **실재 상태**: **33개 테이블 실체화**(Prisma migrate 적용, 마이그레이션 16차) — `users` 10(+ notifications·password_reset_otps·social_accounts·oauth_states) · `products` 6 · `commerce` 4(carts·coupons·user_coupons·reviews) · `orders` 5(+ shipments·shipment_tracking) · `payments` 3(payments·refunds·payment_outbox) · `settlements` 2(settlements·settlement_items) · `admin` 2(banners·admin_audit_logs) · `files` 1(files.files).
+> Variant 가 옵션을 인라인 필드로 흡수(별도 options 테이블 없음). `order_events`·`inventory_logs`·`shipment_tracking` 은 append-only. 금전 필드(totalAmount·unitPrice·amount·totalSales·commission·payoutAmount·saleAmount 등)는 전부 Decimal(12,2)(P-005). cross-schema/cross-module 참조는 plain String(FK 미선언, P-001) — notifications.userId·files.files.ownerId·banners 무참조·settlements.sellerId·settlement_items.orderItemId·shipments.orderId 등.
 > notifications 는 `admin` 이 아닌 `users` 스키마에 위치한다(사용자 알림). admin 스키마는 banners·admin_audit_logs 2개(공지·시스템설정 테이블은 미도입 — 필요 시 후속).
 > Refresh Token 은 원문이 아닌 SHA-256 해시(`tokenHash`)로 저장된다(ADR-003).
 > `users.password_reset_otps`(013): 비밀번호 재설정 OTP — email·otpHash(SHA-256)·expiresAt·consumedAt·attempts·createdAt, `@@index([email, createdAt desc])`. OTP 평문 미저장(해시만). attempts 5회 초과 시 consumed 처리(SEC-001 브루트포스 차단).
@@ -255,6 +255,10 @@ postgres (단일 인스턴스, Fly Postgres)
 | ~~find-email 감사 로그 실패 케이스 미커버 (SEC-018-02, Low)~~ | **RESOLVED (019)** — `SecurityAuditLogger.findEmailNotFound` 신규(기존 3종과 동일 best-effort try/catch, `maskPhone` 마스킹) — `findEmail` 404 분기(NotFoundException 이전)에서 호출, enumeration 시도 탐지 사각 해소 | `auth` 모듈·운영 | 018 발견 / 019 해소 |
 | ~~pino 요청 로그 redact 미설정 (SEC-018-03, Informational)~~ | **RESOLVED (019)** — `LoggerModule.forRoot({ pinoHttp })` 에 `redact: ['req.headers.authorization', 'req.headers.cookie']` 추가, HTTP 로그 JWT/쿠키 평문 노출 차단 | `app.module.ts` 로깅·운영 | 011(기원)·018(관찰)·019(해소) |
 | `/auth/login`·`/auth/forgot-password` rate-limit 과 순차-다회 요청 e2e 의 구조적 충돌 (GAP-019-05, Low) | `test/auth.e2e-spec.ts::SC-027`(50회 로그인 P95)·`test/auth-recovery.e2e-spec.ts::SC-017`(forgot-password)가 `THROTTLE_DEFAULT_LIMIT=20/60s`·`THROTTLE_FORGOT_PASSWORD_LIMIT=5/60s`(NFR-001/003 의도 동작)와 산술 충돌해 전체 `--runInBand` 스위트에서 상시 FAIL. production 정상(회귀 아님) — `@SkipThrottle()` 부여는 보안 원칙 위반이라 해소 불가, 해소 경로는 테스트 하네스 재설계(quota 격리/리셋) | `test/auth.e2e-spec.ts`·`test/auth-recovery.e2e-spec.ts` | 019 발견 |
+| 레거시 데이터 이관 도구 미해결 전제조건 (GAP-020-03) | 실 이관 실행 전 반드시 해소되어야 할 구조적 잔존 전제 3종: (1) 레거시 실 DDL 전건 [TO-VERIFY](MAPPING-SPEC.md·extract.sh·queries/extract/*.sql.template 의 레거시측 컬럼·테이블·PK 타입 미확정, AWS RDS 파이프라인 밖·spec 옵션A 원칙) — 미해소 시 스크립트 실행 실패, (2) products.variants SKU 단위 1행 가정(레거시 product_options 분리 구조면 10_transform.sql 조인 추가 필요), (3) 레거시 소셜 로그인(카카오·구글·네이버) 대응 불명(014~016 신규 기능, 레거시 동등 기능 여부 [TO-VERIFY], 없으면 count baseline=0) | `scripts/migration/` 이관 도구 실행 | 020-data-migration-cutover |
+| 020 이관 도구 — 스테이징 정리 미자동화 (SEC-020-01, Medium) | `migration_staging` 스키마(29테이블, PII·결제 원본 포함)의 컷오버 후 정리(`DROP SCHEMA migration_staging CASCADE`)가 `sql/00_staging_ddl.sql` 주석에만 존재하고 RUNBOOK.md·run.sh 어디에도 체크포인트·자동화 없음. 실 이관 시 정리 누락되면 프로덕션 Fly Postgres 에 PII·결제 데이터 무기한 잔류 위험 | `scripts/migration/`(RUNBOOK.md·run.sh) 실 이관 운영 | 020-data-migration-cutover |
+| 020 이관 도구 — 감사로그 행위자 미기록 (SEC-020-02, Medium) | `migration_staging.verification_runs`(감사 테이블, ADR-010/NFR-006)에 단계·시각·상태·detail 은 기록되나 실행 행위자(운영자 계정·Fly machine ID) 식별 필드 없음. ADR-008 금전 레코드 직접 삽입(런타임 결제경로 우회)의 "누가 실행했는지" 축이 스키마 레벨에서 확인 불가 | `scripts/migration/`(verification_runs·run.sh) | 020-data-migration-cutover |
+| 020 이관 도구 — 성능 후속 개선 여지 (GAP-020-08 Medium·GAP-020-09 Low, 비블로킹) | (1) 18개 레거시 서비스(독립 RDS) 추출·적재가 `for_each_legacy_service` bash 루프로 완전 순차 실행 — 서비스 간 자원 경합 없어 병렬화(백그라운드 &+wait) 시 총 소요 단축 가능(NFR-001/005 여유율 확보 최대 레버리지). (2) `20_verify.sql` §(c) checksum 이 `ORDER BY random() LIMIT n`(전체 정렬 anti-pattern) — `TABLESAMPLE` 대체 권고 | `scripts/migration/`(run.sh·20_verify.sql) 실 이관 성능 | 020-data-migration-cutover |
 
 ---
 
@@ -268,5 +272,6 @@ postgres (단일 인스턴스, Fly Postgres)
 | 2026-07-03 | v1.1.0/015-naver-code-exchange — 네이버 소셜 로그인 재도입(code-exchange: client_secret 서버 교환). 로그인 3종 활성(`SUPPORTED_PROVIDERS`)·자동연동은 카카오·구글 2종(`AUTO_LINK_PROVIDERS`, 네이버는 SEC-015-01 이메일 소유권 미검증으로 제외). DB 스키마 무변경(social_accounts 재사용). §2 auth·social/·§4 데이터모델·§6 SEC-015-01/02/03 등재 | 015-naver-code-exchange |
 | 2026-07-03 | v1.1.0/016-naver-state-redirect-hardening — 네이버 code-exchange CSRF state 서버측 하드닝. `POST /auth/naver/state`(익명 발급)·`OAuthStateService`·`users.oauth_states` 신규(33테이블·16차)·verify 이전 state 검증·redirect_uri 조건부(NAVER_REDIRECT_URI). SEC-015-02 RESOLVED·SEC-015-03 코드 RESOLVED/잔존. §2 auth·§4·§6·§7 갱신 | 016-naver-state-redirect-hardening |
 | 2026-07-05 | v1.1.0/019-security-quality-followups — 목록 조회 Query DTO 검증(SEC-017-01 RESOLVED)·find-email enumeration 감사로그(SEC-018-02 RESOLVED)·pino JWT/쿠키 redact(SEC-018-03 RESOLVED)·복합 인덱스(Product/Seller). 사이클 중 003/018 사전결함 2건 통합 수정(GAP-019-03 PrismaService.tx delegate 복원·GAP-019-04 GET 목록 rate-limit 예외). GAP-019-05(auth POST rate-limit vs 순차-다회 e2e 산술충돌, Low) known-limitation 등재. 테스트 카운트 갱신(unit 404·static 60·e2e 125/127). §1·§6·§7 갱신 | 019-security-quality-followups |
+| 2026-07-06 | v1.1.0/020-data-migration-cutover — AWS 레거시 18서비스 RDS PostgreSQL → 신규 8스키마 데이터 이관·빅뱅 컷오버 설계(`scripts/migration/` 도구·MAPPING-SPEC·RUNBOOK·검증 SQL 3종·전용 러너 이미지). `files` 테이블 물리명 정정(file_assets→files.files, GAP-020-02). §6 신규 4행(이관 전제조건 GAP-020-03·스테이징 정리 미자동화 SEC-020-01·감사로그 행위자 미기록 SEC-020-02·성능 후속개선 GAP-020-08/09). 실 이관 실행은 사용자 환경(옵션A) 대기. §2·§4·§6·§7 갱신 | 020-data-migration-cutover |
 | 2026-06-29 | 005·006·007 반영 — 18개 도메인 전부 실구현(배송·정산·검색·알림·파일·배너·통계·운영), 29테이블. notifications 위치 정정(admin→users), file R2 Port+stub 정정, §6 신규 제약(SEC-FIND-005-01·006-01/02, GAP-005-03·006-01/02·007-01, OBS-007-01) 추가 | 005-shipping-settlement, 006-search-notification-file, 007-banner-stats-admin |
 | (이전) | 001~004 골격·카탈로그·거래·리뷰쿠폰 | 001~004 |
