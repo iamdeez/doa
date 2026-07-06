@@ -16,6 +16,7 @@ import type {
   CreateVariantRequest,
   CursorPage,
   FileAsset,
+  InventoryStockView,
   IssueCouponRequest,
   NotificationListResult,
   PlatformOverview,
@@ -119,8 +120,9 @@ export function createApiClient(options: HttpClientOptions) {
         http.post<SellerProfile>('/sellers/register', body),
       me: () => http.get<SellerProfile>('/sellers/me'),
       status: () => http.get<SellerStatusResponse>('/sellers/me/status'),
-      /** GET /sellers/me/products — 본인 상품 전체 배열(페이지네이션 없음). */
-      myProducts: () => http.get<Product[]>('/sellers/me/products'),
+      /** GET /sellers/me/products — cursor 페이지네이션 envelope(017). */
+      myProducts: (query?: { cursor?: string; limit?: number }) =>
+        http.get<CursorPage<Product>>('/sellers/me/products', { query }),
       /** 관리자 전용(ADMIN_USER_IDS) — 비관리자는 403. */
       approve: (sellerId: string) =>
         http.patch<SellerProfile>(`/sellers/${sellerId}/approve`),
@@ -155,12 +157,12 @@ export function createApiClient(options: HttpClientOptions) {
     },
 
     inventory: {
-      /** 현재 재고(숫자) — APPROVED 판매자 전용. */
+      /** 현재 재고 — APPROVED 판매자 전용. 응답 구조화(017). */
       getStock: (variantId: string) =>
-        http.get<number>(`/inventory/${variantId}/stock`),
-      /** 재고 입고 — 본문 없음(void). APPROVED 판매자 전용. */
+        http.get<InventoryStockView>(`/inventory/${variantId}/stock`),
+      /** 재고 입고 — APPROVED 판매자 전용. 응답 구조화(017). */
       stockIn: (variantId: string, body: StockInRequest) =>
-        http.post<void>(`/inventory/${variantId}/stock-in`, body),
+        http.post<InventoryStockView>(`/inventory/${variantId}/stock-in`, body),
     },
 
     order: {
